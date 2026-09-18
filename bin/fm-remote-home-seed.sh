@@ -151,15 +151,18 @@ REG_EXISTED=0
 [ -f "$REG" ] && { cp "$REG" "$TMP/registry.before"; REG_EXISTED=1; }
 
 # Keep the parent charter as its durable source, but publish a remote copy in
-# which every parent-local path becomes the one that exists on the remote host.
-# The scaffold composes both paths from the GENERATING home's own state
-# directory, which names nothing on that filesystem: the status path becomes the
-# remote append-only relay log, and the steering inbox becomes the one the
-# host-local control plane actually writes into, under the private parent-route
-# state directory. Without the inbox rewrite a remote mate that checks its own
-# inbox at a checkpoint or at startup finds an absent path and concludes there
-# is nothing to do, recovering only by the accident that a steer's doorbell line
-# carries the host-side path.
+# which the two paths the scaffold resolved against the GENERATING home's own
+# state directory - bin/fm-brief.sh's STATUS_FILE and INBOX_DIR, which name
+# nothing on the remote filesystem - become their host-side counterparts: the
+# status path becomes the remote append-only relay log, and the steering inbox
+# becomes the one the host-local control plane actually writes into, under the
+# private parent-route state directory. That pair is the whole rewrite: a
+# further state-derived path added to the scaffold needs its own substitution
+# here, and the remote lifecycle e2e fails when any generating-home state path
+# survives into a published charter. Without the inbox rewrite a remote mate
+# that checks its own inbox at a checkpoint or at startup finds an absent path
+# and concludes there is nothing to do, recovering only by the accident that a
+# steer's doorbell line carries the host-side path.
 PARENT_STATUS="$STATE/$ID.status"
 REMOTE_STATUS="$REMOTE_HOME/state/parent-replies.status"
 PARENT_INBOX=$(fm_task_inbox_dir "$STATE" "$ID")
