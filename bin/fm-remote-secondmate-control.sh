@@ -35,6 +35,8 @@
 # A private parent-route state directory stores only the remote secondmate
 # agent's endpoint record; the home's own
 # state/*.meta remains reserved for workers the secondmate supervises.
+# bin/fm-parent-route-lib.sh owns that directory shape, so the parent's seed can
+# name this host's inbox in the charter it publishes without a second copy.
 # Retirement closes only this secondmate's panes or workspace and never
 # stops fm-remote or removes a sibling secondmate's workspace or panes.
 #
@@ -53,10 +55,10 @@ set -eu
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 FM_ROOT="${FM_ROOT_OVERRIDE:-$(cd "$SCRIPT_DIR/.." && pwd)}"
 TARGET_HOME=${FM_HOME:?FM_HOME is required}
-CONTROL_STATE="$TARGET_HOME/state/parent-route"
-CONTROL_DATA="$TARGET_HOME/data/.parent-route"
 REMOTE_HERDR_SESSION=fm-remote
 
+# shellcheck source=bin/fm-parent-route-lib.sh
+. "$SCRIPT_DIR/fm-parent-route-lib.sh"
 # shellcheck source=bin/fm-backend.sh
 . "$SCRIPT_DIR/fm-backend.sh"
 # shellcheck source=bin/fm-ff-lib.sh
@@ -65,6 +67,9 @@ REMOTE_HERDR_SESSION=fm-remote
 . "$SCRIPT_DIR/fm-pending-reply-lib.sh"
 # shellcheck source=bin/fm-task-inbox-lib.sh
 . "$SCRIPT_DIR/fm-task-inbox-lib.sh"
+
+CONTROL_STATE=$(fm_parent_route_state_dir "$TARGET_HOME")
+CONTROL_DATA=$(fm_parent_route_data_dir "$TARGET_HOME")
 
 die() { printf 'error: %s\n' "$1" >&2; exit 1; }
 usage() { sed -n '2,24p' "$0" | sed 's/^# \{0,1\}//'; exit 2; }
