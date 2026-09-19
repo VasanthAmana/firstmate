@@ -4,14 +4,18 @@
 #
 # On some tmux/WSL setups a brand-new window's pane_current_path transiently
 # reports a stale, unrelated-but-real path on the very first poll, before the
-# pane actually settles into the worktree treehouse get moved it to. That stale
-# path still passes the loop's "differs from the project" check and
-# validate_spawn_worktree's "is a real, distinct worktree" check (it IS a real
-# git checkout, just the wrong one), so a naive single-read loop silently
-# records the wrong worktree= in state/<id>.meta. This test simulates that
-# transient-then-settled pane_current_path sequence with a fake tmux and
-# asserts the recorded worktree resolves to the real, settled worktree, never
-# the stale first read.
+# pane actually settles into the worktree treehouse get moved it to. When that
+# stale path is a checkout of a DIFFERENT repository, the loop's screen
+# (spawn_worktree_isolated, the repository-membership predicate the launch
+# guard shares) refuses it outright. A stale read of another worktree of the
+# SAME repository - a neighboring pool slot, say - still passes that predicate
+# (it IS a real, distinct worktree of the project), so a naive single-read
+# loop would silently record the wrong worktree= in state/<id>.meta; the loop
+# therefore requires two consecutive reads to agree before accepting a path.
+# The single-stale-read case below simulates the transient-then-settled
+# pane_current_path sequence with a fake tmux and asserts the recorded
+# worktree resolves to the real, settled worktree, never the stale first read;
+# the already-settled case pins the two-read confirmation itself.
 #
 # The same loop has a second transient to survive: `treehouse get` reports the
 # REPOSITORY's primary checkout as its own cwd while it is still preparing a
@@ -67,9 +71,12 @@ SH
 
 # make_settle_case <name> <id> <stale_reads> builds a home, a primary project
 # with a real worktree (the eventual settled path), and a separate real git
-# repo standing in for the stale path (a real checkout of something else
-# entirely, distinct from both the project and the worktree - mirroring the
-# live incident where the stale read was another real firstmate home).
+# repo standing in for the stale path: a real checkout of a DIFFERENT
+# repository, which spawn_worktree_isolated refuses as such rather than
+# adopting - mirroring the live incidents where the stale read was another
+# real firstmate checkout. The two-read confirmation that guards a stale read
+# of the same repository is pinned by the read count in
+# test_already_settled_pane_costs_one_confirm_read, not by the stale path here.
 make_settle_case() {
   local name=$1 id=$2 stale_reads=$3 case_dir home proj wt stale fakebin countfile
   case_dir="$TMP_ROOT/$name"
@@ -115,8 +122,8 @@ run_settle_spawn() {
 }
 
 # A single stale first read (the exact incident) must not be accepted: the
-# loop should keep polling until two consecutive reads agree, landing on the
-# real settled worktree instead.
+# screen rejects the foreign checkout and the loop keeps polling until two
+# consecutive reads agree on the real settled worktree instead.
 test_single_stale_first_read_is_not_accepted() {
   local rec id out status
   id=settle-single-stale-z1
