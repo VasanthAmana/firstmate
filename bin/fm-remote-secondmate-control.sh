@@ -32,9 +32,8 @@
 # code root from origin. Because this home is a standalone clone, the target
 # commit is imported here first and the fast-forward itself is the shared one in
 # bin/fm-ff-lib.sh, so the clean, ancestry, and branch guards have a single owner.
-# A private parent-route state directory stores only the remote secondmate
-# agent's endpoint record; the home's own
-# state/*.meta remains reserved for workers the secondmate supervises.
+# This mate's endpoint record and steering inbox live in a private parent-route
+# state directory, never among the state/*.meta of the workers it supervises;
 # bin/fm-parent-route-lib.sh owns that directory shape, so the parent's seed can
 # name this host's inbox in the charter it publishes without a second copy.
 # Retirement closes only this secondmate's panes or workspace and never
