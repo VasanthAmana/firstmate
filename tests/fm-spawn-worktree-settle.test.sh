@@ -221,9 +221,44 @@ test_primary_checkout_that_never_settles_fails_at_the_deadline() {
   pass "a pane stuck on the primary checkout fails loudly at the deadline"
 }
 
+# The task pane can end up in a DIFFERENT repository for reasons that have
+# nothing to do with the backend. The live case: `treehouse get` entered the
+# worktree correctly and then opened its interactive subshell, the user's own
+# ~/.bashrc ran an unconditional `cd` to the firstmate checkout, and the pane
+# reported that checkout from then on - reproduced on both tmux and herdr, so
+# no backend fix could have caught it.
+#
+# That path is a real git checkout, is its own worktree root, and is neither
+# the spawning project nor the spawning repository's primary checkout, so every
+# other test in this predicate passed it and the spawn ADOPTED it: the
+# pooled-base refresh then fetched and `git reset --hard`ed an unrelated
+# repository, and only a later harness workspace-trust check - which not every
+# harness performs - refused the launch. Belonging to the project's own
+# repository is what has to be required here instead.
+test_other_repository_checkout_is_never_adopted() {
+  local rec id out status
+  id=settle-foreign-repo-z5
+  rec=$(make_settle_case settle-foreign-repo "$id" 100000)
+  read_settle_record "$rec"
+  fm_test_fake_sleep_noop "$FAKEBIN_DIR"
+
+  out=$(run_settle_spawn "$id")
+  status=$?
+  [ "$status" -ne 0 ] || fail "spawn adopted a checkout of a different repository as the worktree"$'\n'"$out"
+  assert_contains "$out" "did not enter an isolated worktree" \
+    "spawn did not explain that the pane never reached an isolated worktree"
+  assert_contains "$out" "$STALE_DIR" \
+    "the refusal did not name the foreign checkout the pane kept reporting"
+  assert_contains "$out" "different repository" \
+    "the refusal did not say the path belongs to another repository"
+  [ ! -e "$HOME_DIR/state/$id.meta" ] || fail "refused spawn published task metadata"
+  pass "a checkout of a different repository is never adopted as the task worktree"
+}
+
 test_single_stale_first_read_is_not_accepted
 test_already_settled_pane_costs_one_confirm_read
 test_transient_primary_checkout_is_not_accepted
 test_primary_checkout_that_never_settles_fails_at_the_deadline
+test_other_repository_checkout_is_never_adopted
 
 echo "# all fm-spawn-worktree-settle tests passed"
