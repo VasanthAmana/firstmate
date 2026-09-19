@@ -665,6 +665,14 @@ assert_no_grep "$PARENT/state/ios.status" "$REMOTE_HOME/data/charter.md" "remote
 # instructions on its own disk.
 assert_grep "$REMOTE_HOME/state/parent-route/ios.inbox" "$REMOTE_HOME/data/charter.md" \
   "remote charter did not name the host-side steering inbox"
+# The sentence must carry the path exactly as the mate will use it: the
+# scaffold shell-quotes it, so nothing but the path may sit inside the quotes.
+# A substring match alone cannot tell '<path>' from '"<path>"', and stock macOS
+# bash 3.2 produces the latter when a substitution's double-quoted replacement
+# runs inside a double-quoted expansion - a directory that exists nowhere.
+assert_grep "Firstmate steers you through durable message files in '$REMOTE_HOME/state/parent-route/ios.inbox'." \
+  "$REMOTE_HOME/data/charter.md" \
+  "remote charter did not name the host-side steering inbox as a usable quoted path"
 assert_no_grep "$PARENT/state/ios.inbox" "$REMOTE_HOME/data/charter.md" \
   "remote charter retained the inaccessible local steering inbox path"
 # Nothing the charter names may resolve against the generating home at all.

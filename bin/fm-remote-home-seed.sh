@@ -169,7 +169,8 @@ PARENT_INBOX=$(fm_task_inbox_dir "$STATE" "$ID")
 REMOTE_INBOX=$(fm_task_inbox_dir "$(fm_parent_route_state_dir "$REMOTE_HOME")" "$ID")
 while IFS= read -r line || [ -n "$line" ]; do
   line=${line//"$PARENT_STATUS"/"$REMOTE_STATUS"}
-  printf '%s\n' "${line//"$PARENT_INBOX"/"$REMOTE_INBOX"}"
+  line=${line//"$PARENT_INBOX"/"$REMOTE_INBOX"}
+  printf '%s\n' "$line"
 done < "$BRIEF" > "$TMP/charter.remote"
 
 PROJECTS_CSV=
