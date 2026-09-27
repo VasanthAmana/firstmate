@@ -1,0 +1,30 @@
+### [head-4283cb1] operator kills every --serve by hand while the watcher keeps probing
+round 1 req 4 rc=1 2s: error: remote home is not a seeded secondmate home
+round 1 req 2 rc=1 2s: error: remote home is not a seeded secondmate home
+round 1 req 3 rc=1 2s: error: remote home is not a seeded secondmate home
+round 1 req 1 rc=1 3s: error: remote home is not a seeded secondmate home
+--- after round 1: worker process groups=1
+round 2 req 3 rc=1 2s: error: remote home is not a seeded secondmate home
+round 2 req 1 rc=1 2s: error: remote home is not a seeded secondmate home
+round 2 req 4 rc=1 3s: error: remote home is not a seeded secondmate home
+round 2 req 2 rc=1 3s: error: remote home is not a seeded secondmate home
+--- after round 2: worker process groups=1
+round 3 req 4 rc=1 2s: error: remote home is not a seeded secondmate home
+round 3 req 1 rc=1 3s: error: remote home is not a seeded secondmate home
+round 3 req 3 rc=1 3s: error: remote home is not a seeded secondmate home
+round 3 req 2 rc=1 3s: error: remote home is not a seeded secondmate home
+--- after round 3: worker process groups=1
+round 4 req 4 rc=1 2s: error: remote home is not a seeded secondmate home
+round 4 req 1 rc=1 3s: error: remote home is not a seeded secondmate home
+round 4 req 2 rc=1 3s: error: remote home is not a seeded secondmate home
+round 4 req 3 rc=1 3s: error: remote home is not a seeded secondmate home
+--- after round 4: worker process groups=1
+round 5 req 2 rc=1 2s: error: remote home is not a seeded secondmate home
+round 5 req 4 rc=1 2s: error: remote home is not a seeded secondmate home
+round 5 req 1 rc=1 3s: error: remote home is not a seeded secondmate home
+round 5 req 3 rc=1 3s: error: remote home is not a seeded secondmate home
+--- after round 5: worker process groups=1
+--- settled process table:
+ 482342       1  482342       8 /bin/bash /home/fm/remote-root/bin/fm-remote-job-worker.sh
+ 482409  482342  482342       8 /bin/bash /home/fm/remote-root/bin/fm-remote-job-worker.sh --serve
+settled worker process groups=1

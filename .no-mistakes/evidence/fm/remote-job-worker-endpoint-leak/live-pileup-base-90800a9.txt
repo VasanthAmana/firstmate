@@ -1,0 +1,23 @@
+### [base-90800a9] remote root at: 1791c99 base
+--- before: serve processes
+ 329031       1  329031      13 /bin/bash /home/fm/remote-root/bin/fm-remote-job-worker.sh
+ 329087  329031  329031      13 /bin/bash /home/fm/remote-root/bin/fm-remote-job-worker.sh --serve
+--- wedge serving worker 329087 (SIGSTOP) and age its heartbeat, as a stuck worker on athos would look
+round 1 req 2 rc=255 10-0 s: remote endpoint probe exceeded 10 seconds
+round 1 req 4 rc=255 10-0 s: remote endpoint probe exceeded 10 seconds
+round 1 req 3 rc=255 10-0 s: remote endpoint probe exceeded 10 seconds
+round 1 req 1 rc=255 10-0 s: remote endpoint probe exceeded 10 seconds
+--- after round 1: --serve count=1
+round 2 req 2 rc=255 10-10 s: remote endpoint probe recently failed; retry after backoff
+round 2 req 4 rc=255 10-10 s: remote endpoint probe recently failed; retry after backoff
+round 2 req 1 rc=255 10-10 s: remote endpoint probe recently failed; retry after backoff
+round 2 req 3 rc=255 10-10 s: remote endpoint probe recently failed; retry after backoff
+--- after round 2: --serve count=1
+round 3 req 1 rc=255 10-10 s: remote endpoint probe recently failed; retry after backoff
+round 3 req 4 rc=255 10-10 s: remote endpoint probe recently failed; retry after backoff
+round 3 req 3 rc=255 10-10 s: remote endpoint probe recently failed; retry after backoff
+round 3 req 2 rc=255 10-10 s: remote endpoint probe recently failed; retry after backoff
+--- after round 3: --serve count=1
+--- final process table
+ 329031       1  329031      24 /bin/bash /home/fm/remote-root/bin/fm-remote-job-worker.sh
+ 329087  329031  329031      24 /bin/bash /home/fm/remote-root/bin/fm-remote-job-worker.sh --serve

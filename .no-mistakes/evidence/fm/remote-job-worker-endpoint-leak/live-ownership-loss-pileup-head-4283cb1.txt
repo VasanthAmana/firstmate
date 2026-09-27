@@ -1,0 +1,29 @@
+### [head-4283cb1] remote root at: head 4283cb1
+--- before:
+ 422067       1  422067      17 /bin/bash /home/fm/remote-root/bin/fm-remote-job-worker.sh
+ 422134  422067  422067      17 /bin/bash /home/fm/remote-root/bin/fm-remote-job-worker.sh --serve
+--- simulate ownership loss: remove the queue ownership lock under the live serving worker (what a stale-lock reclaim does)
+round 1 req 1 rc=1 1s: error: remote home is not a seeded secondmate home
+round 1 req 2 rc=1 2s: error: remote home is not a seeded secondmate home
+round 1 req 3 rc=1 2s: error: remote home is not a seeded secondmate home
+--- after round 1: --serve count=1
+round 2 req 2 rc=1 1s: error: remote home is not a seeded secondmate home
+round 2 req 3 rc=1 2s: error: remote home is not a seeded secondmate home
+round 2 req 1 rc=1 2s: error: remote home is not a seeded secondmate home
+--- after round 2: --serve count=3
+round 3 req 1 rc=1 1s: error: remote home is not a seeded secondmate home
+round 3 req 2 rc=1 2s: error: remote home is not a seeded secondmate home
+round 3 req 3 rc=1 2s: error: remote home is not a seeded secondmate home
+--- after round 3: --serve count=1
+round 4 req 1 rc=1 1s: error: remote home is not a seeded secondmate home
+round 4 req 2 rc=1 2s: error: remote home is not a seeded secondmate home
+round 4 req 3 rc=1 2s: error: remote home is not a seeded secondmate home
+--- after round 4: --serve count=2
+--- final process table (pid ppid pgid age args):
+final --serve count=0
+distinct worker process groups: 0
+### after displaced workers self-exited (no worker running): next request
+request rc=1 1s: error: remote home is not a seeded secondmate home
+ 452086       1  452086       2 /bin/bash /home/fm/remote-root/bin/fm-remote-job-worker.sh
+ 452153  452086  452086       2 /bin/bash /home/fm/remote-root/bin/fm-remote-job-worker.sh --serve
+ 453803  452153  452086 4294967295 /bin/bash /home/fm/remote-root/bin/fm-remote-job-worker.sh --serve

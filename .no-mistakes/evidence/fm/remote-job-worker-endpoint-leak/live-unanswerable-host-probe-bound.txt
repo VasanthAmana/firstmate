@@ -1,0 +1,14 @@
+### porthos route -> ssh peer that accepts TCP but never answers (ConnectTimeout 60 in ssh config)
+watcher probe 1: rc=255 elapsed=10s ssh-connections-so-far=1 :: remote endpoint probe exceeded 10 seconds
+watcher probe 2: rc=255 elapsed=0s ssh-connections-so-far=1 :: remote endpoint probe recently failed; retry after backoff
+watcher probe 3: rc=255 elapsed=0s ssh-connections-so-far=1 :: remote endpoint probe recently failed; retry after backoff
+watcher probe 4: rc=255 elapsed=0s ssh-connections-so-far=1 :: remote endpoint probe recently failed; retry after backoff
+observe probe (distinct argv, own key): rc=255 elapsed=10s ssh-connections=2 :: remote endpoint probe exceeded 10 seconds
+--- a healthy route in the same cycle is unaffected by porthos's cached negative:
+athos state: rc=1 elapsed=0s :: error: remote home is not a seeded secondmate home
+--- after backoff expires (FM_REMOTE_PROBE_BACKOFF=5, wait 6s) exactly one fresh bounded attempt:
+retry 1: rc=255 elapsed=11s ssh-connections=3 :: remote endpoint probe exceeded 10 seconds
+retry 2: rc=255 elapsed=0s ssh-connections=3 :: remote endpoint probe recently failed; retry after backoff
+--- cache file (persisted local state):
+-rw------- 1 fm fm   11 Sep 27 09:58 .remote-probe-6d7d37898a75e176edda14f16830ba9d758c40d3.failed
+-rw------- 1 fm fm   11 Sep 27 09:58 .remote-probe-c6bbcfa1eb0c09de6c56c2ce3e935c1e75b4925b.failed

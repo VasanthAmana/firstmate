@@ -1,0 +1,33 @@
+### [base-90800a9] remote root at: base
+--- before:
+ 361517       1  361517       4 /bin/bash /home/fm/remote-root/bin/fm-remote-job-worker.sh
+ 361608  361517  361517       4 /bin/bash /home/fm/remote-root/bin/fm-remote-job-worker.sh --serve
+--- simulate ownership loss: remove the queue ownership lock under the live serving worker (what a stale-lock reclaim does)
+round 1 req 2 rc=125 1s: remote job worker stopped before this job completed
+round 1 req 1 rc=125 2s: remote job worker stopped before this job completed
+round 1 req 3 rc=125 2s: remote job worker stopped before this job completed
+--- after round 1: --serve count=3
+round 2 req 3 rc=125 1s: remote job worker stopped before this job completed
+round 2 req 2 rc=125 1s: remote job worker stopped before this job completed
+round 2 req 1 rc=125 2s: remote job worker stopped before this job completed
+--- after round 2: --serve count=3
+round 3 req 1 rc=125 1s: remote job worker stopped before this job completed
+round 3 req 2 rc=125 1s: remote job worker stopped before this job completed
+round 3 req 3 rc=125 1s: remote job worker stopped before this job completed
+--- after round 3: --serve count=4
+round 4 req 1 rc=125 1s: remote job worker stopped before this job completed
+round 4 req 2 rc=125 2s: remote job worker stopped before this job completed
+round 4 req 3 rc=125 2s: remote job worker stopped before this job completed
+--- after round 4: --serve count=7
+--- final process table (pid ppid pgid age args):
+ 361517       1  361517      21 /bin/bash /home/fm/remote-root/bin/fm-remote-job-worker.sh
+ 361608  361517  361517      21 /bin/bash /home/fm/remote-root/bin/fm-remote-job-worker.sh --serve
+ 366823       1  366823      15 /bin/bash /home/fm/remote-root/bin/fm-remote-job-worker.sh
+ 366989  366823  366823      15 /bin/bash /home/fm/remote-root/bin/fm-remote-job-worker.sh --serve
+ 372743       1  372743      11 /bin/bash /home/fm/remote-root/bin/fm-remote-job-worker.sh
+ 372952  372743  372743      11 /bin/bash /home/fm/remote-root/bin/fm-remote-job-worker.sh --serve
+ 380390       1  380390       8 /bin/bash /home/fm/remote-root/bin/fm-remote-job-worker.sh
+ 380657  380390  380390       8 /bin/bash /home/fm/remote-root/bin/fm-remote-job-worker.sh --serve
+ 388949       1  388949       4 /bin/bash /home/fm/remote-root/bin/fm-remote-job-worker.sh
+ 389178  388949  388949       4 /bin/bash /home/fm/remote-root/bin/fm-remote-job-worker.sh --serve
+final --serve count=6

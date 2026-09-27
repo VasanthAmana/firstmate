@@ -1,0 +1,40 @@
+### deploy fix (remote root now: head 4283cb1) with legacy trees still running: --serve count=7
+ 361517       1  361517      32 /bin/bash /home/fm/remote-root/bin/fm-remote-job-worker.sh
+ 361608  361517  361517      32 /bin/bash /home/fm/remote-root/bin/fm-remote-job-worker.sh --serve
+ 366823       1  366823      26 /bin/bash /home/fm/remote-root/bin/fm-remote-job-worker.sh
+ 366989  366823  366823      26 /bin/bash /home/fm/remote-root/bin/fm-remote-job-worker.sh --serve
+ 372743       1  372743      22 /bin/bash /home/fm/remote-root/bin/fm-remote-job-worker.sh
+ 372952  372743  372743      22 /bin/bash /home/fm/remote-root/bin/fm-remote-job-worker.sh --serve
+ 380390       1  380390      18 /bin/bash /home/fm/remote-root/bin/fm-remote-job-worker.sh
+ 380657  380390  380390      18 /bin/bash /home/fm/remote-root/bin/fm-remote-job-worker.sh --serve
+ 388949       1  388949      15 /bin/bash /home/fm/remote-root/bin/fm-remote-job-worker.sh
+ 389178  388949  388949      15 /bin/bash /home/fm/remote-root/bin/fm-remote-job-worker.sh --serve
+ 420201  366989  366823       0 /bin/bash /home/fm/remote-root/bin/fm-remote-job-worker.sh --serve
+ 420216  372952  372743 4294967295 /bin/bash /home/fm/remote-root/bin/fm-remote-job-worker.sh --serve
+ 420220  420216  372743 4294967295 /bin/bash /home/fm/remote-root/bin/fm-remote-job-worker.sh --serve
+request 1 rc=1 2s: error: remote home is not a seeded secondmate home
+  --serve count=2
+request 2 rc=1 1s: error: remote home is not a seeded secondmate home
+  --serve count=1
+request 3 rc=1 1s: error: remote home is not a seeded secondmate home
+  --serve count=1
+--- after ordinary requests:
+ 422067       1  422067       5 /bin/bash /home/fm/remote-root/bin/fm-remote-job-worker.sh
+ 422134  422067  422067       5 /bin/bash /home/fm/remote-root/bin/fm-remote-job-worker.sh --serve
+ 427236  422134  422067       0 /bin/bash /home/fm/remote-root/bin/fm-remote-job-worker.sh --serve
+### operator runs the doctor --fix through fm-on (the documented remedy)
+doctor rc=1
+fix entrypoint-link=applied: linked /home/fm/.local/bin/fm-remote-entrypoint.sh to /home/fm/remote-root/bin/fm-remote-entrypoint.sh
+check remote-job-worker=ok: the Linux remote job worker is running
+check remote-job-worker-loaded=skip: Aqua launch agents do not apply on linux
+check remote-job-probe=ok: the remote job worker completed the required-tool probe
+fix: install each one where it resolves on the path reported above, or put a wrapper script for it in /home/fm/.local/bin, which is always on that PATH.
+fix: tools in an unselected nvm version or outside the discovered asdf or mise paths need an absolute wrapper; see docs/remote-secondmates.md for the wrapper recipe.
+--- after doctor --fix:
+ 422067       1  422067       9 /bin/bash /home/fm/remote-root/bin/fm-remote-job-worker.sh
+ 422134  422067  422067       9 /bin/bash /home/fm/remote-root/bin/fm-remote-job-worker.sh --serve
+ 430371  422134  422067 4294967295 /bin/bash /home/fm/remote-root/bin/fm-remote-job-worker.sh --serve
+ 430372  430371  422067 4294967295 /bin/bash /home/fm/remote-root/bin/fm-remote-job-worker.sh --serve
+final --serve count=1
+post-fix request 1 rc=1 1s: error: remote home is not a seeded secondmate home
+post-fix request 2 rc=1 1s: error: remote home is not a seeded secondmate home

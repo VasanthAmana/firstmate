@@ -1,0 +1,12 @@
+ok - a stale live owner is stopped before starting its replacement
+ok - ownership loss stops the serving worker without an external signal
+ok - forced recovery reaps displaced legacy trees without touching another queue
+ALL TESTS PASSED
+ok - a stale live owner is stopped before starting its replacement
+ok - ownership loss stops the serving worker without an external signal
+ok - forced recovery reaps displaced legacy trees without touching another queue
+ALL TESTS PASSED
+ok - a stale live owner is stopped before starting its replacement
+ok - ownership loss stops the serving worker without an external signal
+ok - forced recovery reaps displaced legacy trees without touching another queue
+ALL TESTS PASSED

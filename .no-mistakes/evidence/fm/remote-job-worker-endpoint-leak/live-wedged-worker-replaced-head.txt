@@ -1,0 +1,9 @@
+### [head] wedged serving worker (SIGSTOP) with a stale heartbeat, as observed on athos
+wedged pid=482409
+ 482342       1  482342      69 /bin/bash /home/fm/remote-root/bin/fm-remote-job-worker.sh
+ 482409  482342  482342      69 /bin/bash /home/fm/remote-root/bin/fm-remote-job-worker.sh --serve
+watcher probe: rc=1 elapsed=6s :: error: remote home is not a seeded secondmate home
+--- after:
+ 524524       1  524524       1 /bin/bash /home/fm/remote-root/bin/fm-remote-job-worker.sh
+ 524597  524524  524524       1 /bin/bash /home/fm/remote-root/bin/fm-remote-job-worker.sh --serve
+wedged pid 482409 is gone
