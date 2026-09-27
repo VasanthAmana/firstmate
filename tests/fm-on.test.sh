@@ -34,7 +34,7 @@ SSH_LOG="$TMP_ROOT/ssh.log"
 SSH_COUNT="$TMP_ROOT/ssh.count"
 mkdir -p "$LOCAL_HOME/data" "$REMOTE_ROOT/bin" "$REMOTE_HOME"
 printf 'fixture\n' > "$REMOTE_ROOT/AGENTS.md"
-cp "$ROOT/bin/fm-remote-entrypoint.sh" "$ROOT/bin/fm-remote-job-lib.sh" \
+cp "$ROOT/bin/fm-wake-lib.sh" "$ROOT/bin/fm-remote-entrypoint.sh" "$ROOT/bin/fm-remote-job-lib.sh" \
   "$ROOT/bin/fm-remote-job-worker.sh" "$REMOTE_ROOT/bin/"
 
 cat > "$REMOTE_ROOT/bin/fm-probe-one.sh" <<'SH'
@@ -68,7 +68,10 @@ case "\${1:-}:\${2:-}" in
 esac
 SH
 cp "$ROOT/bin/fm-remote-doctor.sh" "$ROOT/bin/fm-tasks-axi-lib.sh" \
-  "$ROOT/bin/fm-remote-herdr-owner-lib.sh" "$ROOT/bin/fm-backend.sh" "$REMOTE_ROOT/bin/"
+  "$ROOT/bin/fm-remote-herdr-owner-lib.sh" "$ROOT/bin/fm-backend.sh" \
+  "$ROOT/bin/fm-composer-lib.sh" "$ROOT/bin/fm-transition-lib.sh" \
+  "$ROOT/bin/fm-agent-process-lib.sh" "$ROOT/bin/fm-session-lock-lib.sh" \
+  "$ROOT/bin/fm-cursor-lib.sh" "$ROOT/bin/fm-gemini-lib.sh" "$REMOTE_ROOT/bin/"
 mkdir -p "$REMOTE_ROOT/bin/backends"
 cp "$ROOT/bin/backends/herdr.sh" "$REMOTE_ROOT/bin/backends/herdr.sh"
 cat > "$REMOTE_ROOT/bin/fm-mutate.sh" <<'SH'
@@ -101,6 +104,7 @@ shift 2
 [ "$host" = remote-mac ] || exit 91
 [ "$entry" = fm-remote-entrypoint.sh ] || exit 92
 case "${FM_FAKE_SSH_MODE:-normal}" in
+  hang) sleep 30 ;;
   unreachable) exit 255 ;;
   ambiguous)
     "$FM_FAKE_REMOTE_ENTRYPOINT" "$@"
@@ -544,5 +548,54 @@ set -e
 [ "$(cat "$SSH_COUNT")" -eq 1 ] || fail "ambiguous completion was retried"
 [ "$(grep -c mutation "$REMOTE_HOME/mutations")" -eq 1 ] || fail "ambiguous mutation did not execute exactly once"
 pass "unreachable and ambiguous transport failures are surfaced without retry"
+
+# Exercise the watcher-facing read through fm-on, including a connected SSH
+# peer that never returns. Repeated negatives must not create more requests.
+cat > "$REMOTE_ROOT/bin/fm-remote-secondmate-control.sh" <<'SH'
+#!/bin/bash
+[ "$2" != broken ] || exit 3
+printf 'alive\n'
+SH
+chmod +x "$REMOTE_ROOT/bin/fm-remote-secondmate-control.sh"
+git -C "$REMOTE_ROOT" add bin/fm-remote-secondmate-control.sh
+git -C "$REMOTE_ROOT" commit -qm 'state probe fixture'
+: > "$SSH_COUNT"
+PROBE_STARTED=$SECONDS
+set +e
+FM_REMOTE_PROBE_TIMEOUT=1 FM_FAKE_SSH_MODE=hang fm_on ios fm-remote-secondmate-control.sh state ios \
+  > "$TMP_ROOT/probe.out" 2> "$TMP_ROOT/probe.err"
+PROBE_RC=$?
+set -e
+[ "$PROBE_RC" -eq 255 ] || fail "stalled liveness was not unknown transport"
+[ $((SECONDS - PROBE_STARTED)) -lt 10 ] || fail "liveness used the long job timeout"
+[ ! -s "$TMP_ROOT/probe.out" ] || fail "timed-out liveness leaked partial state"
+for _ in 1 2 3; do
+  if fm_on ios fm-remote-secondmate-control.sh state ios >/dev/null 2>&1; then
+    fail "negative liveness cache was ignored"
+  fi
+done
+[ "$(cat "$SSH_COUNT")" -eq 1 ] || fail "negative probes kept opening SSH requests"
+# A changed endpoint identity is not masked by another route's cached failure.
+out=$(fm_on ios fm-remote-secondmate-control.sh state changed-id)
+[ "$out" = alive ] || fail "negative cache crossed endpoint identities"
+# The pending-reply observation runs in the same cycle and shares the bound.
+PROBE_STARTED=$SECONDS
+set +e
+FM_REMOTE_PROBE_TIMEOUT=1 FM_FAKE_SSH_MODE=hang fm_on ios fm-remote-secondmate-control.sh observe ios >/dev/null 2>&1
+PROBE_RC=$?
+set -e
+[ "$PROBE_RC" -eq 255 ] || fail "stalled observation was not unknown transport"
+[ $((SECONDS - PROBE_STARTED)) -lt 10 ] || fail "observation used the long job timeout"
+# A remote command's own failure is an answer, not an unreachable host.
+: > "$SSH_COUNT"
+for _ in 1 2; do
+  set +e
+  fm_on ios fm-remote-secondmate-control.sh state broken >/dev/null 2>&1
+  PROBE_RC=$?
+  set -e
+  [ "$PROBE_RC" -eq 3 ] || fail "remote probe exit status was not passed through"
+done
+[ "$(cat "$SSH_COUNT")" -eq 2 ] || fail "a remote command failure was cached as unreachable"
+pass "watcher probes are bounded end to end and cache only unknown results per exact route"
 
 echo "ALL TESTS PASSED"

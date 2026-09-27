@@ -82,7 +82,23 @@
 # it to stop itself once its root is pruned, and
 # bin/fm-remote-job-reap-orphans.sh uses it to reap workers that were already
 # orphaned that way.
+#
+# Serving workers stop when they lose the ownership lock. Recovery serializes
+# the whole stop/start/readiness transaction with fm-wake-lib.sh's portable
+# lock under start.lock; a contender waits up to 5 seconds for the holder's
+# result instead of launching its own. A failed attempt leaves start.failed
+# (epoch seconds) plus its FM_REMOTE_JOB_ERROR in start.error, and backs off for
+# 60 seconds; a caller blocked by that backoff sees the recorded reason. A worker
+# already ready (Linux: live owner with matching identity; darwin: matching and
+# loaded launch agent, fresh owner probe, matching identity) returns before the
+# lock and never touches start.failed. Linux launches at most one tree per attempt,
+# stopping an unready tree before returning failure. FM_REMOTE_JOB_FORCE_RESTART=1
+# lets doctor --fix bypass that cooldown and replace an apparently ready owner.
+# Linux recovery also reaps displaced legacy trees only when exact worker argv,
+# process birth identity, account HOME and FM_REMOTE_JOB_STATE_ROOT prove they
+# belong to this queue; other queues and unverifiable processes are untouched.
 
+FM_REMOTE_JOB_LIB_DIR=$(CDPATH='' cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)
 FM_REMOTE_JOB_LABEL=dev.firstmate.remote-job
 FM_REMOTE_JOB_MAX_BYTES=${FM_REMOTE_JOB_MAX_BYTES:-1048576}
 FM_REMOTE_JOB_QUEUE_TIMEOUT=${FM_REMOTE_JOB_QUEUE_TIMEOUT:-360}
@@ -1085,13 +1101,16 @@ fm_remote_job_worker_alive() { # <account-home>
 }
 
 fm_remote_job_probe() { # <account-home>; a fresh worker heartbeat or active job proves readiness
-  local account_home=$1 ready lock mtime now
+  local account_home=$1 ready lock mtime now ready_pid owner_pid
   [ "${FM_REMOTE_JOB_ACTIVE:-}" = 1 ] && return 0
   fm_remote_job_prepare_state "$account_home" || return 1
   lock=$(fm_remote_job_worker_lock_path)
   [ ! -e "$lock/quarantine" ] && [ ! -L "$lock/quarantine" ] || return 1
   ready=$(fm_remote_job_worker_ready_path)
   [ -f "$ready" ] && [ ! -L "$ready" ] || return 1
+  ready_pid=$(fm_remote_job_read_single_line "$ready" 64 2>/dev/null) || return 1
+  owner_pid=$(fm_remote_job_read_single_line "$lock/pid" 64 2>/dev/null) || return 1
+  [ "$ready_pid" = "$owner_pid" ] || return 1
   mtime=$(fm_remote_job_path_mtime "$ready" 2>/dev/null || true)
   case "$mtime" in ''|*[!0-9]*) return 1 ;; esac
   now=$(date +%s)
@@ -1154,8 +1173,11 @@ fm_remote_job_start_linux_worker() { # <remote-root> <account-home>
     return 1
   }
   fm_remote_job_prepare_state "$account_home" || return 1
-  if fm_remote_job_worker_owned_alive "$root" "$account_home"; then
-    if fm_remote_job_worker_identity_matches "$root" "$account_home"; then return 0; fi
+  if fm_remote_job_lock_owner_matches_process "$account_home" ||
+    fm_remote_job_worker_owned_alive "$root" "$account_home"; then
+    if [ "${FM_REMOTE_JOB_FORCE_RESTART:-0}" != 1 ] &&
+      fm_remote_job_worker_owned_alive "$root" "$account_home" &&
+      fm_remote_job_worker_identity_matches "$root" "$account_home"; then return 0; fi
     # The owner pid is the serving child; its restart supervisor sits above it
     # and would immediately replace a lone process kill, so stop the whole
     # worker tree through its isolated group.
@@ -1180,11 +1202,14 @@ fm_remote_job_start_linux_worker() { # <remote-root> <account-home>
   pid=$!
   set +m
   case "$pid" in ''|*[!0-9]*) FM_REMOTE_JOB_ERROR="could not start the remote job worker"; return 1 ;; esac
+  FM_REMOTE_JOB_STARTED_PID=$pid
+  FM_REMOTE_JOB_STARTED_START=$(fm_remote_job_process_start "$pid" 2>/dev/null || true)
   FM_REMOTE_JOB_REPAIRED=1
 }
 
-fm_remote_job_ensure_worker() { # <remote-root> <account-home>
+fm_remote_job_ensure_worker_locked() { # <remote-root> <account-home>
   local root=$1 account_home=$2 platform uid identity_matches=0
+  local FM_REMOTE_JOB_STARTED_PID='' FM_REMOTE_JOB_STARTED_START=''
   FM_REMOTE_JOB_ERROR=
   FM_REMOTE_JOB_REPAIRED=0
   root=$(fm_remote_job_canonical_existing_dir "$root") || {
@@ -1214,7 +1239,8 @@ fm_remote_job_ensure_worker() { # <remote-root> <account-home>
       FM_REMOTE_JOB_REPAIRED=1
     fi
     if ! fm_remote_job_launchagent_loaded "$root" "$account_home" "$uid" ||
-      [ "$FM_REMOTE_JOB_REPAIRED" -eq 1 ] || [ "$identity_matches" -eq 0 ]; then
+      [ "$FM_REMOTE_JOB_REPAIRED" -eq 1 ] || [ "$identity_matches" -eq 0 ] ||
+      [ "${FM_REMOTE_JOB_FORCE_RESTART:-0}" = 1 ]; then
       fm_remote_job_reload_launchagent "$account_home" "$uid" || return 1
       FM_REMOTE_JOB_REPAIRED=1
     fi
@@ -1226,16 +1252,152 @@ fm_remote_job_ensure_worker() { # <remote-root> <account-home>
     fm_remote_job_reload_launchagent "$account_home" "$uid" || return 1
     FM_REMOTE_JOB_REPAIRED=1
     fm_remote_job_wait_for_probe "$root" "$account_home" && return 0
-  else
-    # A replaced Linux supervisor can lose its first ownership race while the
-    # prior supervisor finishes releasing the shared worker lock. Retry the
-    # idempotent start once, matching the bounded recovery already used above
-    # for launchd, before reporting a startup failure.
-    fm_remote_job_start_linux_worker "$root" "$account_home" || return 1
-    FM_REMOTE_JOB_REPAIRED=1
-    fm_remote_job_wait_for_probe "$root" "$account_home" && return 0
+  fi
+  if [ -n "$FM_REMOTE_JOB_STARTED_PID" ] && [ -n "$FM_REMOTE_JOB_STARTED_START" ] &&
+    [ "$(fm_remote_job_process_start "$FM_REMOTE_JOB_STARTED_PID" 2>/dev/null)" = "$FM_REMOTE_JOB_STARTED_START" ]; then
+    fm_remote_job_stop_worker_tree "$FM_REMOTE_JOB_STARTED_PID" || {
+      FM_REMOTE_JOB_ERROR="remote job worker failed startup and its tree did not stop safely"
+      return 1
+    }
   fi
   # shellcheck disable=SC2034 # Sourceable API consumed by the entrypoint and remote doctor.
   FM_REMOTE_JOB_ERROR="remote job worker did not report ready after startup"
   return 1
+}
+
+# Linux migration/recovery: identify only this account queue's detached worker
+# trees by exact argv AND their birth environment, never by a name-only kill.
+# Other test queues, homes, roots with unrelated state, and lane processes are
+# excluded. The current owner group is retained unless an explicit doctor
+# repair or an unhealthy/stale owner requires its replacement.
+fm_remote_job_reap_displaced_workers() { # <account-home> <keep-owner-pid>
+  local account_home=$1 keep=$2 scan pid command start value birth_home birth_state birth_root pgid keep_group
+  [ -d /proc/self ] || return 0
+  keep_group=$(fm_remote_job_worker_process_group "$keep" 2>/dev/null || true)
+  scan=$(ps -u "$(id -u)" -o pid=,command=) || return 1
+  while read -r pid command; do
+    case "$pid" in ''|*[!0-9]*|0|1) continue ;; esac
+    case "$command" in */fm-remote-job-worker.sh|*/fm-remote-job-worker.sh\ --serve) ;; *) continue ;; esac
+    [ "$pid" != "$keep" ] || continue
+    [ -r "/proc/$pid/environ" ] || continue
+    start=$(fm_remote_job_process_start "$pid" 2>/dev/null) || continue
+    birth_home='' birth_state='' birth_root=''
+    while IFS= read -r -d '' value; do
+      case "$value" in
+        HOME=*) birth_home=${value#HOME=} ;;
+        FM_REMOTE_JOB_STATE_ROOT=*) birth_state=${value#FM_REMOTE_JOB_STATE_ROOT=} ;;
+        FM_ROOT_OVERRIDE=*) birth_root=${value#FM_ROOT_OVERRIDE=} ;;
+      esac
+    done < "/proc/$pid/environ"
+    [ "$birth_home" = "$account_home" ] && [ "$birth_state" = "$FM_REMOTE_JOB_STATE" ] || continue
+    [ -n "$birth_root" ] || continue
+    case "$command" in
+      "/bin/bash $birth_root/bin/fm-remote-job-worker.sh"|"/bin/bash $birth_root/bin/fm-remote-job-worker.sh --serve") ;;
+      *) continue ;;
+    esac
+    pgid=$(fm_remote_job_worker_process_group "$pid" 2>/dev/null || true)
+    [ -n "$pgid" ] || continue
+    [ -z "$keep_group" ] || [ "$pgid" != "$keep_group" ] || continue
+    [ "$(fm_remote_job_process_start "$pid" 2>/dev/null)" = "$start" ] || continue
+    [ "$(fm_remote_job_process_command "$pid" 2>/dev/null)" = "$command" ] || continue
+    fm_remote_job_stop_worker_tree "$pid" || return 1
+    FM_REMOTE_JOB_REPAIRED=1
+  done <<< "$scan"
+}
+
+# Serialize the full stop/start/readiness transaction (contract in the header).
+# Doctor --fix bypasses the cooldown, but never the lock.
+fm_remote_job_ensure_worker() { # <remote-root> <account-home>
+  local root=$1 account_home=$2 rc=0 keep=0 waited=0 failed now last_error uid
+  local STATE FM_ROOT FM_HOME FM_WAKE_LIB_DIR FM_WAKE_DEFAULT_ROOT FM_WAKE_QUEUE FM_WAKE_QUEUE_LOCK
+  local FM_LOCK_STALE_AFTER _FM_UNAME FM_LOCK_OWNER_DIR FM_LOCK_HELD_PID FM_LOCK_RECOVERED_PID
+  FM_REMOTE_JOB_ERROR='' FM_REMOTE_JOB_REPAIRED=0
+  root=$(fm_remote_job_canonical_existing_dir "$root") || {
+    FM_REMOTE_JOB_ERROR="configured remote root is unavailable or unsafe"
+    return 1
+  }
+  account_home=$(fm_remote_job_canonical_existing_dir "$account_home") || {
+    FM_REMOTE_JOB_ERROR="remote account home is unavailable or unsafe"
+    return 1
+  }
+  fm_remote_job_root_is_live "$root" || {
+    FM_REMOTE_JOB_ERROR="configured remote root is unavailable or unsafe"
+    return 1
+  }
+  [ -x "$root/bin/fm-remote-job-worker.sh" ] || {
+    FM_REMOTE_JOB_ERROR="configured remote root has no safe executable remote job worker"
+    return 1
+  }
+  fm_remote_job_prepare_state "$account_home" || {
+    FM_REMOTE_JOB_ERROR=${FM_REMOTE_JOB_ERROR:-"remote job state is unavailable or unsafe"}
+    return 1
+  }
+  if [ "${FM_REMOTE_JOB_FORCE_RESTART:-0}" != 1 ]; then
+    if [ "$(fm_remote_job_platform)" = darwin ]; then
+      uid=$(id -u 2>/dev/null || true)
+      case "$uid" in ''|*[!0-9]*) ;; *)
+        if fm_remote_job_launchagent_contract_matches "$root" "$account_home" &&
+          fm_remote_job_launchagent_loaded "$root" "$account_home" "$uid" &&
+          fm_remote_job_probe "$account_home" &&
+          fm_remote_job_worker_identity_matches "$root" "$account_home"; then return 0; fi
+        ;;
+      esac
+    elif fm_remote_job_worker_owned_alive "$root" "$account_home" &&
+      fm_remote_job_worker_identity_matches "$root" "$account_home"; then return 0
+    fi
+  fi
+  STATE=$FM_REMOTE_JOB_STATE FM_ROOT=$root FM_HOME=$account_home
+  # shellcheck source=bin/fm-wake-lib.sh
+  . "$FM_REMOTE_JOB_LIB_DIR/fm-wake-lib.sh"
+  # A contender never starts a second attempt. It is served by the holder's
+  # success, or reports promptly while a real recovery is still running.
+  while ! fm_lock_try_acquire "$FM_REMOTE_JOB_STATE/start.lock"; do
+    if [ "${FM_REMOTE_JOB_FORCE_RESTART:-0}" != 1 ] && fm_remote_job_probe "$account_home" &&
+      fm_remote_job_worker_identity_matches "$root" "$account_home"; then
+      return 0
+    fi
+    if [ "$waited" -ge 50 ]; then
+      FM_REMOTE_JOB_ERROR="remote job worker recovery already in progress; retry later"
+      return 1
+    fi
+    waited=$((waited + 1))
+    sleep 0.1
+  done
+  failed=$(fm_remote_job_read_single_line "$FM_REMOTE_JOB_STATE/start.failed" 64 2>/dev/null || true)
+  now=$(date +%s)
+  case "$failed" in ''|*[!0-9]*) failed=0 ;; esac
+  if [ "${FM_REMOTE_JOB_FORCE_RESTART:-0}" != 1 ] && [ $((now - failed)) -lt 60 ]; then
+    last_error=$(fm_remote_job_read_single_line "$FM_REMOTE_JOB_STATE/start.error" 4096 2>/dev/null || true)
+    FM_REMOTE_JOB_ERROR="remote job worker recovery failed recently${last_error:+: $last_error}; retry after the 60-second backoff or run the doctor --fix"
+    rc=1
+  else
+    # Publish before any stop/start work: an SSH disconnect can kill this
+    # caller during recovery, and that interrupted attempt must back off too.
+    [ -L "$FM_REMOTE_JOB_STATE/start.error" ] || rm -f -- "$FM_REMOTE_JOB_STATE/start.error"
+    if [ -L "$FM_REMOTE_JOB_STATE/start.failed" ] ||
+      ! (umask 077; printf '%s\n' "$now" > "$FM_REMOTE_JOB_STATE/start.failed"); then
+      FM_REMOTE_JOB_ERROR="cannot publish remote job worker recovery backoff"
+      fm_lock_release "$FM_REMOTE_JOB_STATE/start.lock"
+      return 1
+    fi
+    if fm_remote_job_lock_owner_matches_process "$account_home"; then keep=$FM_REMOTE_JOB_OWNER_PID; fi
+    if ! fm_remote_job_reap_displaced_workers "$account_home" "$keep"; then
+      FM_REMOTE_JOB_ERROR="displaced remote job worker trees did not stop safely"
+      rc=1
+    elif ! fm_remote_job_ensure_worker_locked "$root" "$account_home"; then
+      rc=1
+    fi
+    if [ "$rc" -eq 0 ]; then
+      [ -L "$FM_REMOTE_JOB_STATE/start.failed" ] || rm -f -- "$FM_REMOTE_JOB_STATE/start.failed"
+    else
+      if [ ! -L "$FM_REMOTE_JOB_STATE/start.failed" ]; then
+        (umask 077; date +%s > "$FM_REMOTE_JOB_STATE/start.failed")
+      fi
+      if [ -n "$FM_REMOTE_JOB_ERROR" ] && [ ! -L "$FM_REMOTE_JOB_STATE/start.error" ]; then
+        (umask 077; printf '%s\n' "$FM_REMOTE_JOB_ERROR" | head -n 1 | cut -c1-4000 > "$FM_REMOTE_JOB_STATE/start.error")
+      fi
+    fi
+  fi
+  fm_lock_release "$FM_REMOTE_JOB_STATE/start.lock"
+  return "$rc"
 }

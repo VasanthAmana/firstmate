@@ -1033,6 +1033,7 @@ worker_process_once() { # <account-home>
   local reserved_homes=()
   worker_reap_finished_lanes
   for job in "$FM_REMOTE_JOB_JOBS"/job-*; do
+    worker_shutdown_owns_lock || worker_exit_lost_lock
     [ -d "$job" ] && [ ! -L "$job" ] || continue
     id=${job##*/}
     fm_remote_job_safe_id "$id" || continue
@@ -1076,6 +1077,7 @@ worker_process_once() { # <account-home>
   done
   [ -n "$candidates" ] || return 0
   while IFS=$'\t' read -r seq id home; do
+    worker_shutdown_owns_lock || worker_exit_lost_lock
     [ -n "$id" ] || continue
     worker_lane_busy "$home" && continue
     home_reserved=0
@@ -1116,6 +1118,10 @@ main() {
   worker_publish_identity "$account_home" || { worker_error "cannot publish worker code identity"; exit 1; }
   worker_publish_pid || { worker_error "cannot publish worker pid"; exit 1; }
   while :; do
+    # A displaced server must not keep publishing readiness or reclaim jobs
+    # belonging to its replacement. TERM is not guaranteed after a crash or
+    # an ownership repair, so check on every serving turn.
+    worker_shutdown_owns_lock || worker_exit_lost_lock
     worker_write_heartbeat || { worker_error "cannot update worker heartbeat"; exit 1; }
     # Checked right after a fresh heartbeat, so the grace window cannot make a
     # still-healthy worker read as unready to a concurrent probe.
@@ -1128,6 +1134,7 @@ main() {
       fm_remote_job_reap_stale "$account_home" || true
       worker_reap=1
     fi
+    worker_shutdown_owns_lock || worker_exit_lost_lock
     worker_process_once "$account_home"
     sleep "$FM_REMOTE_JOB_POLL_SECONDS"
   done

@@ -38,6 +38,8 @@ Within a home's lane the worker preempts a running reply long-poll as soon as an
 A caller that disconnects or whose caller-side wait expires before its job completes cancels it instead of abandoning it: cancelled queued work is skipped, cancelled running work is stopped, and the finalized record is cleaned up, so retries never convoy behind abandoned work.
 Linux uses the same queue and worker protocol without the Aqua-session requirement.
 A worker stops itself once its configured code root stops being a Firstmate checkout, so a worker started from a worktree cannot outlive that worktree, and `bin/fm-remote-job-reap-orphans.sh` clears any worker already left behind that way without ever touching one whose checkout still exists.
+A displaced worker also stops when it loses queue ownership; the serialized recovery and failed-start backoff are owned by [`bin/fm-remote-job-lib.sh`](../bin/fm-remote-job-lib.sh).
+The endpoint state and observation reads that watcher cycles run use the separate whole-request deadline and negative cache described in [`bin/fm-on.sh`](../bin/fm-on.sh), so an unanswerable host cannot consume the normal long-job budget in each cycle.
 The remote account must provide the required toolchain, the selected worker runtime, the selected session backend, and credentials that work on that host.
 A [worker account pin](configuration.md#worker-account-pin-configclaude-account-configpi-account) for the second mate or its workers lives in the remote home's own configuration on that host.
 The origin URL named for each project must be reachable from the remote account because projects are cloned on that host rather than copied from the primary.
@@ -90,6 +92,7 @@ That run is read-only.
 It prints the exact `PATH` its own entrypoint launch produced, executes its required-tool probe through the installed worker when one is available, reports where each required and optional tool resolved, then reports one line per readiness check.
 Each gap is tagged `fixable:` when `--fix` can close it or `human:` when only a person at that machine can, and every gap is followed by an `action:` line naming the exact step.
 Any remaining gap exits non-zero.
+A check that cannot be decided right now, such as a worker probe delayed by a busy lane or a slow host, is tagged `unknown:`; it is not a gap and `--fix` does not act on it.
 The script's own header owns the full line protocol.
 
 `--fix` repairs only the automatable gaps and is safe to rerun:
@@ -106,6 +109,7 @@ Herdr's own SSH remote attach starts such a server when it finds none, and at bo
 It starts the same workers directly on Linux, recreates the `~/.local/bin/fm-remote-entrypoint.sh` symlink when it is absent, and creates only Firstmate-owned required-tool wrappers that it can prove resolve to a version-manager target, stopping after one harness satisfies the at-least-one requirement.
 It never installs packages or overwrites a non-Firstmate file at a reserved wrapper path.
 The dedicated Herdr launch agent owns only the remote-secondmate `fm-remote` server and does not inspect, rewrite, start, stop, or require the user's interactive `default` session or its `dev.firstmate.herdr` launch agent.
+The doctor probes the worker runtime before selecting repairs, including when a fresh heartbeat hides a failed round trip, and uses the shared worker lifecycle to recover displaced Linux worker trees belonging to that account queue.
 It re-derives every check from the host afterwards, so what it prints is the state after the repair rather than the intent of one.
 
 These steps are never automated and are always reported rather than silently attempted, because SSH cannot create a GUI session from nothing:

@@ -39,11 +39,12 @@
 #   check <check>=skip: <why this host is exempt>
 #   check <check>=fixable: <gap --fix can close>
 #   check <check>=human: <gap only a person at that machine can close>
+#   check <check>=unknown: <why the check could not be decided right now>
 #   action: <check>: <the exact step to take>
 # Every check line is authoritative for the moment it printed: under --fix it is
 # the state after the repair attempt, so a human gap is never presented as
 # fixed. Any remaining fixable or human gap, and any missing required tool,
-# exits non-zero.
+# exits non-zero; an unknown check is not a gap.
 #
 # --fix is idempotent and closes only automatable gaps: it writes and reloads
 # both Firstmate-owned Aqua agents, starts the Linux workers where no Aqua agent
@@ -52,6 +53,16 @@
 # installs packages, creates a login session, writes an auto-login password,
 # changes FileVault, stores an account password, or replaces a non-Firstmate
 # wrapper; those remain reported gaps.
+# Before selecting repairs, --fix runs the bounded required-tool round trip
+# even when the heartbeat is fresh, with a 30-second queue and execution
+# budget each (FM_REMOTE_DOCTOR_PROBE_TIMEOUT overrides both). A round trip
+# with no answer or an invalid answer forces owned worker recovery. A probe
+# that expired in the queue behind a busy lane, or outran its execution budget
+# (exit 124 with or without the execution deadline), is reported unknown and
+# repairs nothing, because a busy or slow worker is not a broken one. Every
+# other fixable worker check uses the ordinary ensure path, so busy work is
+# never killed. bin/fm-remote-job-lib.sh owns serialization, backoff, and
+# reaping.
 set -eu
 
 # Resolve this script's directory with builtins only: a host missing a required
@@ -84,6 +95,7 @@ ENTRYPOINT_LINK="${HOME:-}/.local/bin/fm-remote-entrypoint.sh"
 usage() { sed -n '2,5p' "$0" | sed 's/^# \{0,1\}//'; exit 2; }
 
 MODE=check
+REMOTE_JOB_ROUNDTRIP_BROKEN=0
 case "${1:-}" in
   '') ;;
   --fix) MODE=fix; shift ;;
@@ -450,8 +462,11 @@ report_required_tools() {
 }
 
 report_required_tools_from_worker() {
-  local job_id probe_stdout probe_stderr probe_exit line fact name value
+  local job_id job_dir probe_stdout probe_stderr probe_exit line fact name value
   local expected=6 count=0 valid=1 seen=' '
+  local budget=${FM_REMOTE_DOCTOR_PROBE_TIMEOUT:-30}
+  case "$budget" in ''|*[!0-9]*|0) budget=30 ;; esac
+  local FM_REMOTE_JOB_QUEUE_TIMEOUT=$budget FM_REMOTE_JOB_TIMEOUT=$budget FM_REMOTE_JOB_WAIT_GRACE=2
   if ! job_id=$(fm_remote_job_stage "${HOME:-}" "$FM_ROOT" "${FM_HOME:-}" \
     fm-remote-doctor.sh --worker-tool-probe </dev/null); then
     set_check remote-job-probe "fixable: the remote job worker could not accept the required-tool probe" \
@@ -461,6 +476,7 @@ report_required_tools_from_worker() {
   fi
   if ! fm_remote_job_wait "${HOME:-}" "$job_id"; then
     fm_remote_job_reap "${HOME:-}" "$job_id" 2>/dev/null || true
+    REMOTE_JOB_ROUNDTRIP_BROKEN=1
     set_check remote-job-probe "fixable: the remote job worker did not complete the required-tool probe" \
       "rerun this command with --fix to restart the worker"
     report_required_tools
@@ -469,6 +485,16 @@ report_required_tools_from_worker() {
   probe_stdout=$FM_REMOTE_JOB_STDOUT
   probe_stderr=$FM_REMOTE_JOB_STDERR
   probe_exit=$FM_REMOTE_JOB_EXIT
+  if [ "$probe_exit" = 124 ] && job_dir=$(fm_remote_job_job_dir "$job_id" 2>/dev/null); then
+    if fm_remote_job_read_number "$job_dir" deadline >/dev/null 2>&1; then
+      set_check remote-job-probe "unknown: the required-tool probe outran its execution budget on a slow host"
+    else
+      set_check remote-job-probe "unknown: busy lane; the required-tool probe expired in the queue behind a running remote job"
+    fi
+    fm_remote_job_reap "${HOME:-}" "$job_id" 2>/dev/null || true
+    report_required_tools
+    return 0
+  fi
   MISSING=()
   while IFS= read -r line; do
     case "$line" in required\ *=*) ;; *) valid=0; continue ;; esac
@@ -488,6 +514,7 @@ report_required_tools_from_worker() {
     cat "$probe_stdout"
     set_check remote-job-probe "ok: the remote job worker completed the required-tool probe"
   else
+    REMOTE_JOB_ROUNDTRIP_BROKEN=1
     set_check remote-job-probe "fixable: the remote job worker returned an invalid required-tool probe result" \
       "rerun this command with --fix to restart the worker"
     report_required_tools
@@ -552,7 +579,7 @@ repair_required_wrappers() {
 }
 
 fix_remote_job_worker() {
-  if fm_remote_job_ensure_worker "$FM_ROOT" "${HOME:-}"; then
+  if FM_REMOTE_JOB_FORCE_RESTART=$REMOTE_JOB_ROUNDTRIP_BROKEN fm_remote_job_ensure_worker "$FM_ROOT" "${HOME:-}"; then
     [ "$FM_REMOTE_JOB_REPAIRED" -eq 0 ] || fix_report remote-job-worker applied "installed or reloaded $FM_REMOTE_JOB_LABEL"
     return 0
   fi
@@ -901,6 +928,12 @@ if [ "$PLATFORM" = darwin ]; then
 fi
 run_checks "$LAUNCH_AGENT_SHELL"
 if [ "$MODE" = fix ]; then
+  # A fresh heartbeat alone can hide competing servers or a wedged lane.
+  # Discover a broken round trip before selecting fixes, then report the
+  # post-repair result below exactly once.
+  if [ "${FM_REMOTE_JOB_ACTIVE:-}" != 1 ] && remote_job_identity_ok; then
+    report_required_tools_from_worker >/dev/null
+  fi
   apply_fixes "$LAUNCH_AGENT_SHELL"
   # Re-derive every check from the host itself, so what prints below is the
   # state after repair rather than the intent of a repair.

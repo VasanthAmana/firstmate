@@ -32,6 +32,14 @@
 # is doing, so a legitimately long-but-alive remote command is never falsely
 # killed. FM_SSH_ALIVE_INTERVAL and FM_SSH_ALIVE_COUNT_MAX override the
 # defaults; the worst-case detection window is roughly interval * count.
+# The read-only endpoint probes that watcher cycles run
+# (fm-remote-secondmate-control.sh state and observe) have a separate
+# end-to-end FM_REMOTE_PROBE_TIMEOUT (default 10 seconds) instead of the long
+# remote job budget. A timeout or transport failure returns 255 (unknown, never
+# dead or missing) and is cached under the local state directory for
+# FM_REMOTE_PROBE_BACKOFF (default 60 seconds), keyed by the exact remote route
+# and argv, so an unanswerable host costs one bounded attempt per backoff
+# window. Any other exit status passes through with its output, uncached.
 set -eu
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -119,6 +127,43 @@ SSH_ARGS=(
   -o "ServerAliveCountMax=$ALIVE_COUNT_MAX"
   -- "$HOST" fm-remote-entrypoint.sh "$PROTOCOL" "$ROOT_B64" "$HOME_B64" "$ARGV_B64"
 )
+# Watcher probes: bounded end to end, with a cached negative (see header).
+if [ "$COMMAND" = fm-remote-secondmate-control.sh ] && { [ "${1:-}" = state ] || [ "${1:-}" = observe ]; }; then
+  PROBE_TIMEOUT=${FM_REMOTE_PROBE_TIMEOUT:-10}
+  PROBE_BACKOFF=${FM_REMOTE_PROBE_BACKOFF:-60}
+  case "$PROBE_TIMEOUT:$PROBE_BACKOFF" in *[!0-9:]*|:*|*:) die "invalid remote probe bounds" ;; esac
+  [ "$PROBE_TIMEOUT" -gt 0 ] && [ "$PROBE_BACKOFF" -gt 0 ] || die "invalid remote probe bounds"
+  PROBE_STATE=${FM_STATE_OVERRIDE:-$FM_HOME/state}
+  [ ! -L "$PROBE_STATE" ] || die "unsafe remote probe cache directory"
+  (umask 077; mkdir -p "$PROBE_STATE")
+  PROBE_KEY=$(printf '%s\0' "$HOST" "$ROOT" "$HOME_PATH" "$@" | git hash-object --stdin)
+  PROBE_FAILED="$PROBE_STATE/.remote-probe-$PROBE_KEY.failed"
+  PROBE_NOW=$(date +%s)
+  PROBE_LAST=0
+  if [ -f "$PROBE_FAILED" ] && [ ! -L "$PROBE_FAILED" ]; then
+    read -r PROBE_LAST < "$PROBE_FAILED" || PROBE_LAST=0
+  fi
+  case "$PROBE_LAST" in ''|*[!0-9]*) PROBE_LAST=0 ;; esac
+  if [ $((PROBE_NOW - PROBE_LAST)) -lt "$PROBE_BACKOFF" ]; then
+    printf 'remote endpoint probe recently failed; retry after backoff\n' >&2
+    exit 255
+  fi
+  # shellcheck source=bin/fm-timeout-lib.sh
+  . "$SCRIPT_DIR/fm-timeout-lib.sh"
+  PROBE_OUTPUT=$(umask 077; mktemp "$PROBE_STATE/.remote-probe.XXXXXX")
+  trap 'rm -f -- "$PROBE_OUTPUT"' EXIT
+  PROBE_RC=0
+  fm_run_timed "$PROBE_TIMEOUT" "$SSH_BIN" "${SSH_ARGS[@]}" < /dev/null > "$PROBE_OUTPUT" || PROBE_RC=$?
+  if [ "$PROBE_RC" -eq 255 ] || fm_timed_out "$PROBE_RC"; then
+    [ "$PROBE_RC" -eq 255 ] || printf 'remote endpoint probe exceeded %s seconds\n' "$PROBE_TIMEOUT" >&2
+    printf '%s\n' "$(date +%s)" > "$PROBE_OUTPUT"
+    mv -f -- "$PROBE_OUTPUT" "$PROBE_FAILED"
+    exit 255
+  fi
+  [ "$PROBE_RC" -ne 0 ] || [ ! -e "$PROBE_FAILED" ] || rm -f -- "$PROBE_FAILED"
+  cat "$PROBE_OUTPUT"
+  exit "$PROBE_RC"
+fi
 if [ "$STDIN_MODE" = caller ]; then
   exec "$SSH_BIN" "${SSH_ARGS[@]}"
 fi
