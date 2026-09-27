@@ -31,7 +31,7 @@
 set -eu
 
 PROTOCOL=1
-DOCTOR_SHA256=78efccd6cb7a0123400e49fa323292a64c8e3c7ebd3717151be69f87735302fb
+DOCTOR_SHA256=cc3f2844a1ae3314900a5f4701d6e7f1203cb8689cb21cedda8e602968d388a3
 REAL_SOURCE=$(python3 -c 'import os, sys; print(os.path.realpath(sys.argv[1]))' "${BASH_SOURCE[0]}" 2>/dev/null) ||
   REAL_SOURCE=$(realpath "${BASH_SOURCE[0]}" 2>/dev/null) ||
   REAL_SOURCE=${BASH_SOURCE[0]}
@@ -174,6 +174,13 @@ fi
 
 if ! fm_remote_job_ensure_worker "$ROOT" "$ACCOUNT_HOME"; then
   die "${FM_REMOTE_JOB_ERROR:-remote job worker is unavailable; run fm-on.sh <route> fm-remote-doctor.sh --fix}"
+fi
+# State and observe reads are watcher probes, not long-running work. Keep
+# their queued records bounded too when fm-on.sh's shorter probe deadline
+# disconnects.
+if [ "$COMMAND" = fm-remote-secondmate-control.sh ] &&
+  { [ "${ARGV[1]:-}" = state ] || [ "${ARGV[1]:-}" = observe ]; }; then
+  FM_REMOTE_JOB_QUEUE_TIMEOUT=5 FM_REMOTE_JOB_TIMEOUT=5 FM_REMOTE_JOB_WAIT_GRACE=2
 fi
 if ! JOB_ID=$(fm_remote_job_stage "$ACCOUNT_HOME" "$ROOT" "$HOME_PATH" "$COMMAND" "${ARGV[@]:1}"); then
   JOB_ID=

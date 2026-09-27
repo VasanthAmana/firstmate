@@ -52,6 +52,9 @@
 # installs packages, creates a login session, writes an auto-login password,
 # changes FileVault, stores an account password, or replaces a non-Firstmate
 # wrapper; those remain reported gaps.
+# Before selecting repairs, --fix runs the bounded required-tool round trip
+# even when the heartbeat is fresh. A failed round trip forces owned worker
+# recovery; bin/fm-remote-job-lib.sh owns serialization, backoff, and reaping.
 set -eu
 
 # Resolve this script's directory with builtins only: a host missing a required
@@ -452,6 +455,7 @@ report_required_tools() {
 report_required_tools_from_worker() {
   local job_id probe_stdout probe_stderr probe_exit line fact name value
   local expected=6 count=0 valid=1 seen=' '
+  local FM_REMOTE_JOB_QUEUE_TIMEOUT=5 FM_REMOTE_JOB_TIMEOUT=5 FM_REMOTE_JOB_WAIT_GRACE=2
   if ! job_id=$(fm_remote_job_stage "${HOME:-}" "$FM_ROOT" "${FM_HOME:-}" \
     fm-remote-doctor.sh --worker-tool-probe </dev/null); then
     set_check remote-job-probe "fixable: the remote job worker could not accept the required-tool probe" \
@@ -552,7 +556,7 @@ repair_required_wrappers() {
 }
 
 fix_remote_job_worker() {
-  if fm_remote_job_ensure_worker "$FM_ROOT" "${HOME:-}"; then
+  if FM_REMOTE_JOB_FORCE_RESTART=1 fm_remote_job_ensure_worker "$FM_ROOT" "${HOME:-}"; then
     [ "$FM_REMOTE_JOB_REPAIRED" -eq 0 ] || fix_report remote-job-worker applied "installed or reloaded $FM_REMOTE_JOB_LABEL"
     return 0
   fi
@@ -901,6 +905,12 @@ if [ "$PLATFORM" = darwin ]; then
 fi
 run_checks "$LAUNCH_AGENT_SHELL"
 if [ "$MODE" = fix ]; then
+  # A fresh heartbeat alone can hide competing servers or a wedged lane.
+  # Discover a broken round trip before selecting fixes, then report the
+  # post-repair result below exactly once.
+  if [ "${FM_REMOTE_JOB_ACTIVE:-}" != 1 ] && remote_job_identity_ok; then
+    report_required_tools_from_worker >/dev/null
+  fi
   apply_fixes "$LAUNCH_AGENT_SHELL"
   # Re-derive every check from the host itself, so what prints below is the
   # state after repair rather than the intent of a repair.

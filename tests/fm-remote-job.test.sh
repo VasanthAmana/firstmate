@@ -25,6 +25,9 @@ REPLACEMENT_OWNER_PID=
 STALL_WORKER_PID=
 STALL_REPLACEMENT_PID=
 STALL_JOB_GROUP=
+LEGACY_PID=
+FOREIGN_PID=
+LEGACY_OWNER_PID=
 mkdir -p "$REMOTE_ROOT/bin" "$REMOTE_HOME" "$ACCOUNT_HOME" "$RUNTIME_BIN"
 # worker.pid records the serving child, not its restart supervisor, so stopping
 # that pid alone leaves the supervisor to respawn - the leak
@@ -36,6 +39,11 @@ cleanup_remote_job_fixture() {
   [ -z "$RESTART_SUPERVISOR_PID" ] || kill -KILL "$RESTART_SUPERVISOR_PID" 2>/dev/null || true
   [ -z "$LOST_TERM_PID" ] || kill -KILL "$LOST_TERM_PID" 2>/dev/null || true
   [ -z "$REPLACEMENT_OWNER_PID" ] || kill -KILL "$REPLACEMENT_OWNER_PID" 2>/dev/null || true
+  local legacy_pid
+  for legacy_pid in "$LEGACY_PID" "$FOREIGN_PID" "$LEGACY_OWNER_PID"; do
+    [ -n "$legacy_pid" ] || continue
+    fm_remote_job_stop_worker_tree "$legacy_pid" 2>/dev/null || true
+  done
   local stall_pid
   for stall_pid in "$STALL_WORKER_PID" "$STALL_REPLACEMENT_PID"; do
     [ -n "$stall_pid" ] || continue
@@ -50,7 +58,7 @@ cleanup_remote_job_fixture() {
 }
 trap cleanup_remote_job_fixture EXIT
 
-cp "$ROOT/bin/fm-remote-job-lib.sh" "$ROOT/bin/fm-remote-job-worker.sh" \
+cp "$ROOT/bin/fm-wake-lib.sh" "$ROOT/bin/fm-remote-job-lib.sh" "$ROOT/bin/fm-remote-job-worker.sh" \
   "$ROOT/bin/fm-remote-delta-read.sh" "$REMOTE_ROOT/bin/"
 printf 'fixture\n' > "$REMOTE_ROOT/AGENTS.md"
 cat > "$REMOTE_ROOT/bin/fm-probe-job.sh" <<'SH'
@@ -208,7 +216,7 @@ for _ in $(seq 1 100); do
   [ -f "$STATE_ROOT/worker.ready" ] && break
   sleep 0.05
 done
-assert_present "$STATE_ROOT/worker.ready" "the worker did not publish its readiness heartbeat"
+assert_present "$STATE_ROOT/worker.ready" "the worker did not publish its readiness heartbeat: $(cat "$TMP_ROOT/worker.err")"
 
 file_mode() {
   if [ "$(uname)" = Darwin ]; then
@@ -278,6 +286,17 @@ fm_remote_job_wait "$ACCOUNT_HOME" "$JOB_ID" || fail "$FM_REMOTE_JOB_ERROR"
 assert_present "$ACTIVE_SIDE_EFFECT" "the active job was interrupted by the concurrent readiness check"
 fm_remote_job_reap "$ACCOUNT_HOME" "$JOB_ID" || fail "the active readiness job could not be reaped"
 pass "active jobs keep the worker ready for concurrent requests"
+
+# A stale heartbeat used to bypass the stop path, launching replacements
+# against a live owner. Suspend the server to make that fault deterministic.
+STALE_PID=$(cat "$STATE_ROOT/worker.pid")
+kill -STOP "$STALE_PID"
+touch -t 200001010000 "$STATE_ROOT/worker.ready"
+fm_remote_job_ensure_worker "$REMOTE_ROOT" "$ACCOUNT_HOME" || fail "$FM_REMOTE_JOB_ERROR"
+[ "$(cat "$STATE_ROOT/worker.pid")" != "$STALE_PID" ] || fail "stale heartbeat retained its stalled owner"
+kill -0 "$STALE_PID" 2>/dev/null && fail "stalled serving process survived recovery"
+fm_remote_job_probe "$ACCOUNT_HOME" || fail "stalled owner recovery did not restore service"
+pass "a stale live owner is stopped before starting its replacement"
 
 OLD_WORKER_PID=$(cat "$STATE_ROOT/worker.pid")
 printf '\n' >> "$REMOTE_ROOT/bin/fm-remote-job-worker.sh"
@@ -772,22 +791,12 @@ done
   || fail "the ownership-loss worker did not stop"
 rm -rf -- "$LOST_STATE/worker.lock"
 kill -CONT "$LOST_TERM_PID"
-LOST_READY_BEFORE=$(file_inode "$LOST_STATE/worker.ready")
-for _ in $(seq 1 100); do
-  LOST_READY_AFTER=$(file_inode "$LOST_STATE/worker.ready")
-  [ -n "$LOST_READY_AFTER" ] && [ "$LOST_READY_AFTER" != "$LOST_READY_BEFORE" ] && break
-  sleep 0.05
-done
-[ -n "${LOST_READY_AFTER:-}" ] && [ "$LOST_READY_AFTER" != "$LOST_READY_BEFORE" ] \
-  || fail "a worker with no ownership lock stopped publishing heartbeats before TERM"
-assert_absent "$LOST_STATE/worker.lock" "the ownership lock reappeared before TERM"
-kill -TERM "$LOST_TERM_PID"
 for _ in $(seq 1 100); do
   kill -0 "$LOST_TERM_PID" 2>/dev/null || break
   sleep 0.05
 done
 if kill -0 "$LOST_TERM_PID" 2>/dev/null; then
-  fail "TERM after ownership loss left the serving worker alive"
+  fail "ownership loss without TERM left the serving worker alive"
 fi
 wait "$LOST_TERM_PID" 2>/dev/null || true
 LOST_TERM_PID=
@@ -795,7 +804,7 @@ LOST_READY_SETTLED=$(file_inode "$LOST_STATE/worker.ready")
 sleep 0.3
 [ "$(file_inode "$LOST_STATE/worker.ready")" = "$LOST_READY_SETTLED" ] \
   || fail "a worker that lost ownership kept replacing its heartbeat after TERM"
-pass "TERM after ownership loss stops the serving worker"
+pass "ownership loss stops the serving worker without an external signal"
 
 HOLD_STARTED="$TMP_ROOT/hold-started"
 HOLD_SIDE_EFFECT="$TMP_ROOT/hold-side-effect"
@@ -1061,7 +1070,7 @@ RESTART_HOME="$TMP_ROOT/restart-account"
 RESTART_STATE="$TMP_ROOT/restart-state"
 RESTART_CHILD_LOG="$TMP_ROOT/restart-children"
 mkdir -p "$RESTART_ROOT/bin" "$RESTART_HOME"
-cp "$ROOT/bin/fm-remote-job-lib.sh" "$RESTART_ROOT/bin/"
+cp "$ROOT/bin/fm-wake-lib.sh" "$ROOT/bin/fm-remote-job-lib.sh" "$RESTART_ROOT/bin/"
 cp "$ROOT/bin/fm-remote-job-worker.sh" "$RESTART_ROOT/bin/fm-remote-job-supervisor-under-test.sh"
 printf 'fixture\n' > "$RESTART_ROOT/AGENTS.md"
 cat > "$RESTART_ROOT/bin/fm-remote-job-worker.sh" <<'SH'
@@ -1099,5 +1108,83 @@ RESTART_SUPERVISOR_PID=
 assert_grep "remote job worker exited 3 times; stopping the supervisor" "$TMP_ROOT/restart-supervisor.err" \
   "the restart guard did not explain why it stopped"
 pass "barely healthy worker failures remain bounded by the restart guard"
+
+# An unanswered startup is one serialized attempt, followed by a shared
+# negative backoff. Real concurrent callers exercise the public ensure API.
+FAIL_ROOT="$TMP_ROOT/failing-root"
+FAIL_HOME="$TMP_ROOT/failing-account"
+FAIL_STATE="$TMP_ROOT/failing-state"
+FAIL_LOG="$TMP_ROOT/failing-starts"
+mkdir -p "$FAIL_ROOT/bin" "$FAIL_HOME"
+printf 'fixture\n' > "$FAIL_ROOT/AGENTS.md"
+cp "$ROOT/bin/fm-remote-job-lib.sh" "$FAIL_ROOT/bin/"
+cat > "$FAIL_ROOT/bin/fm-remote-job-worker.sh" <<SH
+#!/bin/bash
+printf '%s\n' "\$\$" >> "$FAIL_LOG"
+sleep 60
+SH
+chmod +x "$FAIL_ROOT/bin/fm-remote-job-worker.sh"
+(
+  if FM_REMOTE_JOB_STATE_ROOT="$FAIL_STATE" fm_remote_job_ensure_worker "$FAIL_ROOT" "$FAIL_HOME"; then
+    exit 1
+  fi
+  printf '%s\n' "$FM_REMOTE_JOB_ERROR" > "$TMP_ROOT/start-failure"
+) &
+FAIL_CALLER=$!
+for _ in $(seq 1 300); do
+  [ -s "$FAIL_LOG" ] && break
+  sleep 0.05
+done
+assert_present "$FAIL_LOG" "unanswered worker never launched"
+for _ in 1 2; do
+  if FM_REMOTE_JOB_STATE_ROOT="$FAIL_STATE" fm_remote_job_ensure_worker "$FAIL_ROOT" "$FAIL_HOME"; then
+    fail "a concurrent unanswered startup reported ready"
+  fi
+  assert_contains "$FM_REMOTE_JOB_ERROR" 'recovery already in progress' "startup did not serialize callers"
+done
+wait "$FAIL_CALLER" || fail "unanswered startup returned success"
+for _ in 1 2 3; do
+  if FM_REMOTE_JOB_STATE_ROOT="$FAIL_STATE" fm_remote_job_ensure_worker "$FAIL_ROOT" "$FAIL_HOME"; then
+    fail "a failed startup ignored backoff"
+  fi
+  assert_contains "$FM_REMOTE_JOB_ERROR" 'backoff' "failed startup did not report its backoff"
+done
+[ "$(wc -l < "$FAIL_LOG" | tr -d ' ')" -eq 1 ] || fail "failed startup spawned replacement pairs"
+FAILED_WORKER=$(cat "$FAIL_LOG")
+kill -0 "$FAILED_WORKER" 2>/dev/null && fail "failed startup left its worker alive"
+pass "unanswered startup is serialized, reaped, and backed off across callers"
+
+# Legacy Linux processes predate the self-ownership check. The doctor's forced
+# lifecycle must reap only workers bound to this exact account queue.
+if [ -d /proc/self ]; then
+  LEGACY_ROOT="$TMP_ROOT/legacy-root"
+  LEGACY_HOME="$TMP_ROOT/legacy-account"
+  LEGACY_STATE="$TMP_ROOT/legacy-state"
+  mkdir -p "$LEGACY_ROOT/bin" "$LEGACY_HOME"
+  printf 'fixture\n' > "$LEGACY_ROOT/AGENTS.md"
+  printf '#!/bin/bash\nwhile :; do sleep 1; done\n' > "$LEGACY_ROOT/bin/fm-remote-job-worker.sh"
+  chmod +x "$LEGACY_ROOT/bin/fm-remote-job-worker.sh"
+  set -m
+  HOME="$LEGACY_HOME" FM_ROOT_OVERRIDE="$LEGACY_ROOT" FM_REMOTE_JOB_STATE_ROOT="$LEGACY_STATE" \
+    "$LEGACY_ROOT/bin/fm-remote-job-worker.sh" --serve &
+  LEGACY_PID=$!
+  HOME="$LEGACY_HOME" FM_ROOT_OVERRIDE="$LEGACY_ROOT" FM_REMOTE_JOB_STATE_ROOT="$TMP_ROOT/foreign-state" \
+    "$LEGACY_ROOT/bin/fm-remote-job-worker.sh" --serve &
+  FOREIGN_PID=$!
+  set +m
+  FM_REMOTE_JOB_STATE_ROOT="$LEGACY_STATE" FM_REMOTE_JOB_FORCE_RESTART=1 \
+    fm_remote_job_ensure_worker "$REMOTE_ROOT" "$LEGACY_HOME" || fail "$FM_REMOTE_JOB_ERROR"
+  LEGACY_OWNER_PID=$(cat "$LEGACY_STATE/worker.pid")
+  kill -0 "$LEGACY_PID" 2>/dev/null && fail "owned lifecycle retained a displaced legacy worker"
+  kill -0 "$FOREIGN_PID" 2>/dev/null || fail "owned lifecycle stopped a different queue"
+  fm_remote_job_stop_worker_tree "$FOREIGN_PID" || fail "foreign fixture cleanup failed"
+  wait "$LEGACY_PID" "$FOREIGN_PID" 2>/dev/null || true
+  LEGACY_PID='' FOREIGN_PID=''
+  fm_remote_job_stop_worker_tree "$LEGACY_OWNER_PID" || fail "recovered fixture cleanup failed"
+  LEGACY_OWNER_PID=
+  pass "forced recovery reaps displaced legacy trees without touching another queue"
+else
+  printf 'skip: legacy worker birth-environment recovery requires Linux /proc\n'
+fi
 
 echo "ALL TESTS PASSED"

@@ -851,6 +851,27 @@ assert_contains "$DOCTOR_OUT" 'fix remote-job-worker=applied:' "--fix did not re
 assert_contains "$DOCTOR_OUT" 'check remote-job-worker=ok:' "the refreshed worker was not confirmed ready"
 assert_contains "$DOCTOR_OUT" 'check remote-job-probe=ok: the remote job worker completed the required-tool probe' \
   "doctor did not probe tools through the refreshed worker"
+# A live heartbeat and matching code identity used to skip repair selection
+# even when the runtime round trip failed. Make one tool-probe invocation hang
+# past its job deadline; the repaired owner's next probe can then succeed.
+ROUNDTRIP_OLD_PID=$(cat "$CASE_HOME/.firstmate/remote-job/worker.pid")
+cp "$CASE_BIN/tasks-axi" "$CASE_BIN/tasks-axi-real"
+cat > "$CASE_BIN/tasks-axi" <<SH
+#!/bin/bash
+if [ "\${FM_REMOTE_JOB_ACTIVE:-}" = 1 ] && mkdir "$CASE_STATE/first-tool-probe" 2>/dev/null; then
+  sleep 30
+fi
+exec "$CASE_BIN/tasks-axi-real" "\$@"
+SH
+chmod +x "$CASE_BIN/tasks-axi"
+doctor --fix
+expect_code 0 "$DOCTOR_RC" "--fix did not recover a failed runtime probe with a fresh heartbeat"
+assert_contains "$DOCTOR_OUT" 'fix remote-job-worker=applied:' "failed round trip did not select worker repair"
+assert_contains "$DOCTOR_OUT" 'check remote-job-probe=ok: the remote job worker completed the required-tool probe' \
+  "doctor did not confirm the repaired runtime round trip"
+[ "$(cat "$CASE_HOME/.firstmate/remote-job/worker.pid")" != "$ROUNDTRIP_OLD_PID" ] \
+  || fail "invalid runtime probe retained the apparently ready owner"
+pass "doctor repairs a failed runtime round trip despite a fresh worker heartbeat"
 DOCTOR_WORKER_PID=$(cat "$CASE_HOME/.firstmate/remote-job/worker.pid")
 kill -TERM "$DOCTOR_WORKER_PID"
 for _ in $(seq 1 100); do

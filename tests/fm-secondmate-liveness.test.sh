@@ -694,6 +694,8 @@ test_remote_poll_probe_unreachable_preserves_route() {
   [ "$out" = 'skipped|unknown|0|||remote host unavailable or endpoint state unknown; route preserved on lab-host' ] \
     || fail "ssh exit 255 must never read as a dead endpoint, got: $out"
 
+  # A fresh route: fm-on.sh caches the unknown result above for its backoff.
+  w=$(make_remote_probe_world probe-unreadable)
   out=$(probe_remote "$w" poll FM_FAKE_REMOTE_RC=1)
   [ "$out" = 'skipped|unknown|0|||remote endpoint probe unreadable on lab-host' ] \
     || fail "a non-transport remote probe failure must stay inconclusive, got: $out"
