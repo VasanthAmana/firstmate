@@ -39,11 +39,12 @@
 #   check <check>=skip: <why this host is exempt>
 #   check <check>=fixable: <gap --fix can close>
 #   check <check>=human: <gap only a person at that machine can close>
+#   check <check>=unknown: <why the check could not be decided right now>
 #   action: <check>: <the exact step to take>
 # Every check line is authoritative for the moment it printed: under --fix it is
 # the state after the repair attempt, so a human gap is never presented as
 # fixed. Any remaining fixable or human gap, and any missing required tool,
-# exits non-zero.
+# exits non-zero; an unknown check is not a gap.
 #
 # --fix is idempotent and closes only automatable gaps: it writes and reloads
 # both Firstmate-owned Aqua agents, starts the Linux workers where no Aqua agent
@@ -53,11 +54,15 @@
 # changes FileVault, stores an account password, or replaces a non-Firstmate
 # wrapper; those remain reported gaps.
 # Before selecting repairs, --fix runs the bounded required-tool round trip
-# even when the heartbeat is fresh. A round trip with no answer or an invalid
-# answer forces owned worker recovery; a probe that merely expired in the queue
-# behind a busy lane (exit 124 with no execution deadline) and every other
-# fixable worker check use the ordinary ensure path, so busy work is never
-# killed. bin/fm-remote-job-lib.sh owns serialization, backoff, and reaping.
+# even when the heartbeat is fresh, with a 30-second queue and execution
+# budget each (FM_REMOTE_DOCTOR_PROBE_TIMEOUT overrides both). A round trip
+# with no answer or an invalid answer forces owned worker recovery. A probe
+# that expired in the queue behind a busy lane, or outran its execution budget
+# (exit 124 with or without the execution deadline), is reported unknown and
+# repairs nothing, because a busy or slow worker is not a broken one. Every
+# other fixable worker check uses the ordinary ensure path, so busy work is
+# never killed. bin/fm-remote-job-lib.sh owns serialization, backoff, and
+# reaping.
 set -eu
 
 # Resolve this script's directory with builtins only: a host missing a required
@@ -459,7 +464,9 @@ report_required_tools() {
 report_required_tools_from_worker() {
   local job_id job_dir probe_stdout probe_stderr probe_exit line fact name value
   local expected=6 count=0 valid=1 seen=' '
-  local FM_REMOTE_JOB_QUEUE_TIMEOUT=5 FM_REMOTE_JOB_TIMEOUT=5 FM_REMOTE_JOB_WAIT_GRACE=2
+  local budget=${FM_REMOTE_DOCTOR_PROBE_TIMEOUT:-30}
+  case "$budget" in ''|*[!0-9]*|0) budget=30 ;; esac
+  local FM_REMOTE_JOB_QUEUE_TIMEOUT=$budget FM_REMOTE_JOB_TIMEOUT=$budget FM_REMOTE_JOB_WAIT_GRACE=2
   if ! job_id=$(fm_remote_job_stage "${HOME:-}" "$FM_ROOT" "${FM_HOME:-}" \
     fm-remote-doctor.sh --worker-tool-probe </dev/null); then
     set_check remote-job-probe "fixable: the remote job worker could not accept the required-tool probe" \
@@ -478,11 +485,13 @@ report_required_tools_from_worker() {
   probe_stdout=$FM_REMOTE_JOB_STDOUT
   probe_stderr=$FM_REMOTE_JOB_STDERR
   probe_exit=$FM_REMOTE_JOB_EXIT
-  if [ "$probe_exit" = 124 ] && job_dir=$(fm_remote_job_job_dir "$job_id" 2>/dev/null) &&
-    ! fm_remote_job_read_number "$job_dir" deadline >/dev/null 2>&1; then
+  if [ "$probe_exit" = 124 ] && job_dir=$(fm_remote_job_job_dir "$job_id" 2>/dev/null); then
+    if fm_remote_job_read_number "$job_dir" deadline >/dev/null 2>&1; then
+      set_check remote-job-probe "unknown: the required-tool probe outran its execution budget on a slow host"
+    else
+      set_check remote-job-probe "unknown: busy lane; the required-tool probe expired in the queue behind a running remote job"
+    fi
     fm_remote_job_reap "${HOME:-}" "$job_id" 2>/dev/null || true
-    set_check remote-job-probe "fixable: the required-tool probe expired in the queue behind a busy remote job lane" \
-      "rerun this command once the lane's current job finishes"
     report_required_tools
     return 0
   fi

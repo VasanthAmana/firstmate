@@ -852,14 +852,14 @@ assert_contains "$DOCTOR_OUT" 'check remote-job-worker=ok:' "the refreshed worke
 assert_contains "$DOCTOR_OUT" 'check remote-job-probe=ok: the remote job worker completed the required-tool probe' \
   "doctor did not probe tools through the refreshed worker"
 # A live heartbeat and matching code identity used to skip repair selection
-# even when the runtime round trip failed. Make one tool-probe invocation hang
-# past its job deadline; the repaired owner's next probe can then succeed.
+# even when the runtime round trip failed. Make one tool-probe invocation die
+# without an answer; the repaired owner's next probe can then succeed.
 ROUNDTRIP_OLD_PID=$(cat "$CASE_HOME/.firstmate/remote-job/worker.pid")
 cp "$CASE_BIN/tasks-axi" "$CASE_BIN/tasks-axi-real"
 cat > "$CASE_BIN/tasks-axi" <<SH
 #!/bin/bash
 if [ "\${FM_REMOTE_JOB_ACTIVE:-}" = 1 ] && mkdir "$CASE_STATE/first-tool-probe" 2>/dev/null; then
-  sleep 30
+  kill -KILL 0
 fi
 exec "$CASE_BIN/tasks-axi-real" "\$@"
 SH
@@ -872,6 +872,29 @@ assert_contains "$DOCTOR_OUT" 'check remote-job-probe=ok: the remote job worker 
 [ "$(cat "$CASE_HOME/.firstmate/remote-job/worker.pid")" != "$ROUNDTRIP_OLD_PID" ] \
   || fail "invalid runtime probe retained the apparently ready owner"
 pass "doctor repairs a failed runtime round trip despite a fresh worker heartbeat"
+# A probe that outruns its execution budget proves only a slow host: the
+# doctor reports it unknown, stays ready, and --fix keeps the owner.
+SLOW_OLD_PID=$(cat "$CASE_HOME/.firstmate/remote-job/worker.pid")
+cat > "$CASE_BIN/tasks-axi" <<SH
+#!/bin/bash
+if [ "\${FM_REMOTE_JOB_ACTIVE:-}" = 1 ] && [ -e "$CASE_STATE/slow-tool-probe" ]; then
+  sleep 10
+fi
+exec "$CASE_BIN/tasks-axi-real" "\$@"
+SH
+chmod +x "$CASE_BIN/tasks-axi"
+: > "$CASE_STATE/slow-tool-probe"
+FM_REMOTE_DOCTOR_PROBE_TIMEOUT=2 doctor
+expect_code 0 "$DOCTOR_RC" "a slow required-tool probe made the host not ready"
+assert_contains "$DOCTOR_OUT" 'check remote-job-probe=unknown: the required-tool probe outran its execution budget' \
+  "a slow probe was not reported as unknown"
+FM_REMOTE_DOCTOR_PROBE_TIMEOUT=2 doctor --fix
+rm -f "$CASE_STATE/slow-tool-probe"
+expect_code 0 "$DOCTOR_RC" "--fix treated a slow required-tool probe as a gap"
+assert_not_contains "$DOCTOR_OUT" 'fix remote-job-worker=applied:' "a slow probe forced a worker replacement"
+[ "$(cat "$CASE_HOME/.firstmate/remote-job/worker.pid")" = "$SLOW_OLD_PID" ] \
+  || fail "a slow probe replaced the healthy worker owner"
+pass "doctor reports a slow probe as unknown and --fix keeps the worker"
 # A probe that only expires in the queue behind a long job on the same home
 # lane proves the worker is busy, not wedged: --fix must keep the owner and its
 # in-flight job.
@@ -892,9 +915,10 @@ for _ in $(seq 1 200); do
   sleep 0.05
 done
 assert_present "$CASE_STATE/busy-lane-blocker" "the busy-lane blocker job did not start"
-doctor --fix
+FM_REMOTE_DOCTOR_PROBE_TIMEOUT=2 doctor --fix
+expect_code 0 "$DOCTOR_RC" "a busy lane made the host not ready"
 assert_not_contains "$DOCTOR_OUT" 'fix remote-job-worker=applied:' "a busy lane forced a worker replacement"
-assert_contains "$DOCTOR_OUT" 'check remote-job-probe=fixable: the required-tool probe expired in the queue behind a busy remote job lane' \
+assert_contains "$DOCTOR_OUT" 'check remote-job-probe=unknown: busy lane' \
   "a queue-expired probe was not reported as a busy lane"
 [ "$(cat "$CASE_HOME/.firstmate/remote-job/worker.pid")" = "$BUSY_OLD_PID" ] \
   || fail "a busy lane replaced the healthy worker owner"
