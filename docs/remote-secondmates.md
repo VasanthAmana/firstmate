@@ -92,6 +92,7 @@ That run is read-only.
 It prints the exact `PATH` its own entrypoint launch produced, executes its required-tool probe through the installed worker when one is available, reports where each required and optional tool resolved, then reports one line per readiness check.
 Each gap is tagged `fixable:` when `--fix` can close it or `human:` when only a person at that machine can, and every gap is followed by an `action:` line naming the exact step.
 Any remaining gap exits non-zero.
+A check that cannot be decided right now, such as a worker probe delayed by a busy lane or a slow host, is tagged `unknown:`; it is not a gap and `--fix` does not act on it.
 The script's own header owns the full line protocol.
 
 `--fix` repairs only the automatable gaps and is safe to rerun:
