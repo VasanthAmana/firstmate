@@ -872,6 +872,37 @@ assert_contains "$DOCTOR_OUT" 'check remote-job-probe=ok: the remote job worker 
 [ "$(cat "$CASE_HOME/.firstmate/remote-job/worker.pid")" != "$ROUNDTRIP_OLD_PID" ] \
   || fail "invalid runtime probe retained the apparently ready owner"
 pass "doctor repairs a failed runtime round trip despite a fresh worker heartbeat"
+# A probe that only expires in the queue behind a long job on the same home
+# lane proves the worker is busy, not wedged: --fix must keep the owner and its
+# in-flight job.
+BUSY_OLD_PID=$(cat "$CASE_HOME/.firstmate/remote-job/worker.pid")
+cat > "$CASE_BIN/tasks-axi" <<SH
+#!/bin/bash
+if [ "\${FM_REMOTE_JOB_ACTIVE:-}" = 1 ] && mkdir "$CASE_STATE/busy-lane-blocker" 2>/dev/null; then
+  sleep 20
+fi
+exec "$CASE_BIN/tasks-axi-real" "\$@"
+SH
+chmod +x "$CASE_BIN/tasks-axi"
+BLOCKER_ID=$(HOME="$CASE_HOME" FM_REMOTE_JOB_TIMEOUT=60 bash -c \
+  '. "$1/bin/fm-remote-job-lib.sh" && fm_remote_job_stage "$2" "$1" "$3" fm-remote-doctor.sh --worker-tool-probe </dev/null' \
+  _ "$ROOT" "$CASE_HOME" "$CASE_PROJECT_HOME") || fail "could not stage the busy-lane blocker job"
+for _ in $(seq 1 200); do
+  [ -d "$CASE_STATE/busy-lane-blocker" ] && break
+  sleep 0.05
+done
+assert_present "$CASE_STATE/busy-lane-blocker" "the busy-lane blocker job did not start"
+doctor --fix
+assert_not_contains "$DOCTOR_OUT" 'fix remote-job-worker=applied:' "a busy lane forced a worker replacement"
+assert_contains "$DOCTOR_OUT" 'check remote-job-probe=fixable: the required-tool probe expired in the queue behind a busy remote job lane' \
+  "a queue-expired probe was not reported as a busy lane"
+[ "$(cat "$CASE_HOME/.firstmate/remote-job/worker.pid")" = "$BUSY_OLD_PID" ] \
+  || fail "a busy lane replaced the healthy worker owner"
+BLOCKER_EXIT=$(HOME="$CASE_HOME" bash -c \
+  '. "$1/bin/fm-remote-job-lib.sh" && fm_remote_job_wait "$2" "$3" && printf "%s\n" "$FM_REMOTE_JOB_EXIT"' \
+  _ "$ROOT" "$CASE_HOME" "$BLOCKER_ID") || fail "the busy-lane blocker job did not complete"
+expect_code 0 "$BLOCKER_EXIT" "the busy lane's in-flight job was killed by --fix"
+pass "doctor --fix keeps a busy worker whose probe only expired in the queue"
 DOCTOR_WORKER_PID=$(cat "$CASE_HOME/.firstmate/remote-job/worker.pid")
 kill -TERM "$DOCTOR_WORKER_PID"
 for _ in $(seq 1 100); do

@@ -53,8 +53,11 @@
 # changes FileVault, stores an account password, or replaces a non-Firstmate
 # wrapper; those remain reported gaps.
 # Before selecting repairs, --fix runs the bounded required-tool round trip
-# even when the heartbeat is fresh. A failed round trip forces owned worker
-# recovery; bin/fm-remote-job-lib.sh owns serialization, backoff, and reaping.
+# even when the heartbeat is fresh. A round trip with no answer or an invalid
+# answer forces owned worker recovery; a probe that merely expired in the queue
+# behind a busy lane (exit 124 with no execution deadline) and every other
+# fixable worker check use the ordinary ensure path, so busy work is never
+# killed. bin/fm-remote-job-lib.sh owns serialization, backoff, and reaping.
 set -eu
 
 # Resolve this script's directory with builtins only: a host missing a required
@@ -87,6 +90,7 @@ ENTRYPOINT_LINK="${HOME:-}/.local/bin/fm-remote-entrypoint.sh"
 usage() { sed -n '2,5p' "$0" | sed 's/^# \{0,1\}//'; exit 2; }
 
 MODE=check
+REMOTE_JOB_ROUNDTRIP_BROKEN=0
 case "${1:-}" in
   '') ;;
   --fix) MODE=fix; shift ;;
@@ -453,7 +457,7 @@ report_required_tools() {
 }
 
 report_required_tools_from_worker() {
-  local job_id probe_stdout probe_stderr probe_exit line fact name value
+  local job_id job_dir probe_stdout probe_stderr probe_exit line fact name value
   local expected=6 count=0 valid=1 seen=' '
   local FM_REMOTE_JOB_QUEUE_TIMEOUT=5 FM_REMOTE_JOB_TIMEOUT=5 FM_REMOTE_JOB_WAIT_GRACE=2
   if ! job_id=$(fm_remote_job_stage "${HOME:-}" "$FM_ROOT" "${FM_HOME:-}" \
@@ -465,6 +469,7 @@ report_required_tools_from_worker() {
   fi
   if ! fm_remote_job_wait "${HOME:-}" "$job_id"; then
     fm_remote_job_reap "${HOME:-}" "$job_id" 2>/dev/null || true
+    REMOTE_JOB_ROUNDTRIP_BROKEN=1
     set_check remote-job-probe "fixable: the remote job worker did not complete the required-tool probe" \
       "rerun this command with --fix to restart the worker"
     report_required_tools
@@ -473,6 +478,14 @@ report_required_tools_from_worker() {
   probe_stdout=$FM_REMOTE_JOB_STDOUT
   probe_stderr=$FM_REMOTE_JOB_STDERR
   probe_exit=$FM_REMOTE_JOB_EXIT
+  if [ "$probe_exit" = 124 ] && job_dir=$(fm_remote_job_job_dir "$job_id" 2>/dev/null) &&
+    ! fm_remote_job_read_number "$job_dir" deadline >/dev/null 2>&1; then
+    fm_remote_job_reap "${HOME:-}" "$job_id" 2>/dev/null || true
+    set_check remote-job-probe "fixable: the required-tool probe expired in the queue behind a busy remote job lane" \
+      "rerun this command once the lane's current job finishes"
+    report_required_tools
+    return 0
+  fi
   MISSING=()
   while IFS= read -r line; do
     case "$line" in required\ *=*) ;; *) valid=0; continue ;; esac
@@ -492,6 +505,7 @@ report_required_tools_from_worker() {
     cat "$probe_stdout"
     set_check remote-job-probe "ok: the remote job worker completed the required-tool probe"
   else
+    REMOTE_JOB_ROUNDTRIP_BROKEN=1
     set_check remote-job-probe "fixable: the remote job worker returned an invalid required-tool probe result" \
       "rerun this command with --fix to restart the worker"
     report_required_tools
@@ -556,7 +570,7 @@ repair_required_wrappers() {
 }
 
 fix_remote_job_worker() {
-  if FM_REMOTE_JOB_FORCE_RESTART=1 fm_remote_job_ensure_worker "$FM_ROOT" "${HOME:-}"; then
+  if FM_REMOTE_JOB_FORCE_RESTART=$REMOTE_JOB_ROUNDTRIP_BROKEN fm_remote_job_ensure_worker "$FM_ROOT" "${HOME:-}"; then
     [ "$FM_REMOTE_JOB_REPAIRED" -eq 0 ] || fix_report remote-job-worker applied "installed or reloaded $FM_REMOTE_JOB_LABEL"
     return 0
   fi
