@@ -784,10 +784,10 @@ assert_present "$LOST_STATE/worker.ready" "the ownership-loss worker did not bec
 assert_present "$LOST_STATE/worker.lock" "the ownership-loss worker did not publish its lock"
 kill -STOP "$LOST_TERM_PID"
 for _ in $(seq 1 100); do
-  [ "$(ps -o state= -p "$LOST_TERM_PID" 2>/dev/null | tr -d ' ')" = T ] && break
+  [ "$(ps -o state= -p "$LOST_TERM_PID" 2>/dev/null | tr -d ' ' | cut -c1)" = T ] && break
   sleep 0.05
 done
-[ "$(ps -o state= -p "$LOST_TERM_PID" 2>/dev/null | tr -d ' ')" = T ] \
+[ "$(ps -o state= -p "$LOST_TERM_PID" 2>/dev/null | tr -d ' ' | cut -c1)" = T ] \
   || fail "the ownership-loss worker did not stop"
 rm -rf -- "$LOST_STATE/worker.lock"
 kill -CONT "$LOST_TERM_PID"
@@ -832,7 +832,7 @@ done
 assert_present "$HOLD_STARTED" "the held command did not start before ownership loss"
 kill -STOP "$LOST_TERM_PID"
 for _ in $(seq 1 100); do
-  [ "$(ps -o state= -p "$LOST_TERM_PID" 2>/dev/null | tr -d ' ')" = T ] && break
+  [ "$(ps -o state= -p "$LOST_TERM_PID" 2>/dev/null | tr -d ' ' | cut -c1)" = T ] && break
   sleep 0.05
 done
 rm -rf -- "$LOST_STATE/worker.lock"
@@ -868,7 +868,7 @@ done
 assert_present "$OWNER_STATE/worker.ready" "the worker that will lose ownership did not become ready"
 kill -STOP "$LOST_TERM_PID"
 for _ in $(seq 1 100); do
-  [ "$(ps -o state= -p "$LOST_TERM_PID" 2>/dev/null | tr -d ' ')" = T ] && break
+  [ "$(ps -o state= -p "$LOST_TERM_PID" 2>/dev/null | tr -d ' ' | cut -c1)" = T ] && break
   sleep 0.05
 done
 rm -rf -- "$OWNER_STATE/worker.lock"
@@ -1011,11 +1011,11 @@ STALL_QUARANTINE_INODE=$(file_inode "$STALL_STATE/worker.lock/quarantine")
 # worker has finished.
 kill -STOP "$STALL_REPLACEMENT_PID"
 STALL_DEADLINE=$((SECONDS + 30))
-until [ "$(ps -o state= -p "$STALL_REPLACEMENT_PID" 2>/dev/null | tr -d ' ')" = T ] \
+until [ "$(ps -o state= -p "$STALL_REPLACEMENT_PID" 2>/dev/null | tr -d ' ' | cut -c1)" = T ] \
   || [ "$SECONDS" -ge "$STALL_DEADLINE" ]; do
   sleep 0.05
 done
-[ "$(ps -o state= -p "$STALL_REPLACEMENT_PID" 2>/dev/null | tr -d ' ')" = T ] \
+[ "$(ps -o state= -p "$STALL_REPLACEMENT_PID" 2>/dev/null | tr -d ' ' | cut -c1)" = T ] \
   || fail "the replacement could not be held while the ousted worker resumed"
 kill -KILL -- "-$STALL_JOB_GROUP" 2>/dev/null || true
 STALL_DEADLINE=$((SECONDS + 30))
@@ -1026,11 +1026,11 @@ done
   || fail "the job's command group was still alive after the test stopped it"
 rm -f -- "$STALL_HOLD"
 STALL_DEADLINE=$((SECONDS + 30))
-until [ "$(ps -o state= -p "$STALL_WORKER_PID" 2>/dev/null | tr -d ' ')" = Z ] \
+until [ "$(ps -o state= -p "$STALL_WORKER_PID" 2>/dev/null | tr -d ' ' | cut -c1)" = Z ] \
   || ! kill -0 "$STALL_WORKER_PID" 2>/dev/null || [ "$SECONDS" -ge "$STALL_DEADLINE" ]; do
   sleep 0.05
 done
-[ "$(ps -o state= -p "$STALL_WORKER_PID" 2>/dev/null | tr -d ' ')" = Z ] \
+[ "$(ps -o state= -p "$STALL_WORKER_PID" 2>/dev/null | tr -d ' ' | cut -c1)" = Z ] \
   || ! kill -0 "$STALL_WORKER_PID" 2>/dev/null \
   || fail "the ousted worker did not exit after shutdown resumed"
 STALL_WORKER_RC=0
@@ -1048,11 +1048,11 @@ kill -0 "$STALL_REPLACEMENT_PID" 2>/dev/null \
   || fail "the ousted worker wrote or cleared the replacement quarantine during shutdown"
 kill -TERM "$STALL_REPLACEMENT_PID"
 STALL_DEADLINE=$((SECONDS + 30))
-until [ "$(ps -o state= -p "$STALL_REPLACEMENT_PID" 2>/dev/null | tr -d ' ')" = Z ] \
+until [ "$(ps -o state= -p "$STALL_REPLACEMENT_PID" 2>/dev/null | tr -d ' ' | cut -c1)" = Z ] \
   || ! kill -0 "$STALL_REPLACEMENT_PID" 2>/dev/null || [ "$SECONDS" -ge "$STALL_DEADLINE" ]; do
   sleep 0.05
 done
-[ "$(ps -o state= -p "$STALL_REPLACEMENT_PID" 2>/dev/null | tr -d ' ')" = Z ] \
+[ "$(ps -o state= -p "$STALL_REPLACEMENT_PID" 2>/dev/null | tr -d ' ' | cut -c1)" = Z ] \
   || ! kill -0 "$STALL_REPLACEMENT_PID" 2>/dev/null \
   || fail "the replacement did not finish its own TERM shutdown"
 wait "$STALL_REPLACEMENT_PID" 2>/dev/null || true
