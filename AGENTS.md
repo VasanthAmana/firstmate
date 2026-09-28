@@ -99,6 +99,7 @@ data/                personal fleet records; LOCAL, gitignored as a whole
   learnings.md       fleet-local operational facts and gotchas; LOCAL, gitignored; dated, evidence-backed, curated, and updated with inspect-then-update - rewrite and prune rather than append forever, the same contract as captain.md; created lazily, absent until this home has a learning to store
   projects.md        thin fleet navigation registry recording each project's standing delivery posture and optional ship-branch prefix; firstmate-private, parsed by fm-project-mode.sh (section 6)
   secondmates.md      local and remote secondmate routing table; firstmate-private, maintained by the secondmate seed helpers (section 6)
+  initiatives/<slug>.json  named initiative trackers written only by bin/fm-initiative.sh; schema in docs/configuration.md "Initiative trackers" (section 6)
   <id>/brief.md      per-task crewmate brief, or per-secondmate charter brief when kind=secondmate
   <id>/report.md     scout task deliverable, written by the crewmate; survives teardown
 projects/            cloned repos; gitignored; read-only except under hard rule 1's concrete captain-approved project operation exception
@@ -155,6 +156,7 @@ state/               runtime records and signals; gitignored
   .afk-contract      the away-posture record: the captain's verbatim away words, expected return, reach profile, and spend cap; written only by bin/fm-afk-contract.sh in the same turn as /afk, archived under afk-contracts/ at return; its presence IS the away posture in every harness; its sibling .afk-contract.lock serializes actions authorized by the live record (contract: bin/fm-afk-contract.sh)
   afk-contracts/     archived away-posture records: one final record per away window keyed by entry time, plus any superseded mandates from that window
   .afk               durable away/quiet-mode daemon flag on the harnesses that still launch the daemon (never on Pi); present = sub-supervisor may inject escalations, first line `away` (default, set by /afk, cleared on user return) or `quiet` (set by /quiet, cleared only on explicit /quiet off) per the single owner fm_afk_mode() in bin/fm-wake-lib.sh
+  .initiatives.lock  serializes initiative-record writes; bin/fm-initiative.sh is the only writer (schema: docs/configuration.md "Initiative trackers")
   .lock-session      trusted Claude session-lock sidecar; written only by bin/fm-lock.sh; never touch
   .watch.lock .wake-queue.lock watcher singleton and queue serialization locks
   .claude-autoarm.lock .claude-autoarm-epoch .claude-autoarm-failure-notified .claude-autoarm-failure-alarmed .turnend-claude-blocks .turnend-claude-blocks.lock   Claude Stop auto-arm single-flight, epoch, failure-episode, attended-alarm, guard-budget, and budget-lock records; never touch
@@ -292,6 +294,7 @@ A crewmate creates or updates it lazily through the project's selected delivery 
 Keep fleet delivery posture and captain-private strategy out of project memory.
 When the captain invokes `/stow`, load the `stow` skill for its memory curation, knowledge routing, and persistence of the open work records this session is holding; it files and corrects only the open work that session is holding, and never reconciles the backlog against repository or PR reality.
 When the captain invokes `/fleet-usage` or asks for the LLM usage across the second mates or which account each mate is signed into, load the `fleet-usage` skill, which runs `bin/fm-fleet-usage.sh` once and relays its table.
+When the captain invokes `/initiatives`, asks to start, extend, list, or drill into an initiative (a named group of tasks tracked across homes), or places a task being filed in one, load the `initiatives` skill.
 
 ## 7. Task lifecycle
 
