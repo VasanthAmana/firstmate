@@ -29,6 +29,9 @@
 #  15. Remote parent-replies.status is not classified as wrong-home
 #  16. An escalated correlation stays retryable while undelivered, is never reset
 #      once delivered, and its delivery-unknown decision still closes on resolve
+#  17. Settled records past retention move to the archive; unresolved, escalated,
+#      and still-open-escalation records never do
+#  18. Thousands of resolved records tick within a bound and change nothing
 set -u
 
 # shellcheck source=tests/lib.sh
@@ -1602,6 +1605,139 @@ test_escalated_undelivered_correlation_stays_retryable() {
 
 # --- run --------------------------------------------------------------------
 
+
+# Clone the resolved record <corr> in <state> <count> times under fresh ids.
+clone_resolved_records() {  # <state> <corr> <count>
+  local state=$1 corr=$2 count=$3 dir i new
+  dir=$(fm_pending_reply_dir "$state")
+  for ((i = 1; i <= count; i++)); do
+    printf -v new '%016x' "$((0x7000000000000000 + i))"
+    sed "s/$corr/$new/g" "$dir/$corr" > "$dir/$new"
+  done
+}
+
+test_retention_archives_only_settled_records() {
+  (
+    local home state dir archive old recent open escalated closing collide rec
+    home=$(setup_parent retention)
+    state="$home/state"
+    dir=$(fm_pending_reply_dir "$state")
+    archive="$dir-archive"
+    # shellcheck disable=SC2030,SC2031
+    export FM_PENDING_REPLY_NOW=1000
+    old=$(fm_pending_reply_create "$home" "$state" hibit "old settled")
+    fm_pending_reply_mark_delivered "$state" "$old"
+    printf 'done [corr=%s]: ok\n' "$old" >> "$state/hibit.status"
+    fm_pending_reply_try_resolve "$state" "$old" || fail "old fixture should resolve"
+    open=$(fm_pending_reply_create "$home" "$state" other "old unresolved")
+    escalated=$(fm_pending_reply_create "$home" "$state" other "old escalated")
+    rec=$(fm_pending_reply_path "$state" "$escalated")
+    fm_pending_reply_set "$rec" phase escalated
+    fm_pending_reply_set "$rec" escalated_epoch 1000
+    closing=$(fm_pending_reply_create "$home" "$state" closing "old resolved, escalation open")
+    rec=$(fm_pending_reply_path "$state" "$closing")
+    fm_pending_reply_set "$rec" phase resolved
+    fm_pending_reply_set "$rec" resolved_epoch 1000
+    fm_pending_reply_set "$rec" escalated_epoch 900
+    # An unwritable close target keeps this escalation open on every tick.
+    fm_pending_reply_set "$rec" parent_status ""
+    collide=$(fm_pending_reply_create "$home" "$state" collide "old settled, archived twin")
+    rec=$(fm_pending_reply_path "$state" "$collide")
+    fm_pending_reply_set "$rec" phase resolved
+    fm_pending_reply_set "$rec" resolved_epoch 1000
+    mkdir -p "$archive"
+    printf 'twin\n' > "$archive/$collide"
+    export FM_PENDING_REPLY_NOW=$((1000 + 604800 - 1))
+    recent=$(fm_pending_reply_create "$home" "$state" hibit "recent settled")
+    fm_pending_reply_mark_delivered "$state" "$recent"
+    printf 'done [corr=%s]: ok\n' "$recent" >> "$state/hibit.status"
+    fm_pending_reply_try_resolve "$state" "$recent" || fail "recent fixture should resolve"
+    cp "$dir/$old" "$home/old.before"
+
+    fm_pending_reply_tick "$state" || fail "tick before retention should succeed"
+    [ -f "$dir/$old" ] || fail "a record one second short of retention was archived"
+
+    export FM_PENDING_REPLY_NOW=$((1000 + 604800))
+    FM_PENDING_REPLY_RETENTION_SECS=0 fm_pending_reply_tick "$state" \
+      || fail "tick with retention disabled should succeed"
+    [ -f "$dir/$old" ] || fail "retention 0 still archived a record"
+
+    fm_pending_reply_tick "$state" || fail "tick past retention should succeed"
+    [ ! -e "$dir/$old" ] || fail "settled record past retention stayed in place"
+    cmp -s "$archive/$old" "$home/old.before" || fail "archived record was not moved intact"
+    [ -f "$dir/$recent" ] || fail "recently settled record was archived"
+    [ -f "$dir/$open" ] || fail "unresolved record was archived"
+    [ -f "$dir/$escalated" ] || fail "escalated record was archived"
+    [ -f "$dir/$closing" ] || fail "record with an open escalation was archived"
+    [ -z "$(fm_pending_reply_get "$dir/$closing" escalation_closed_epoch)" ] \
+      || fail "escalation close with no target was recorded as closed"
+    [ -f "$dir/$collide" ] || fail "record was moved over an archived record of the same name"
+    [ "$(cat "$archive/$collide")" = twin ] || fail "archived twin was overwritten"
+
+    fm_pending_reply_set "$dir/$closing" parent_status "$state/closing.status"
+    fm_pending_reply_tick "$state" || fail "tick after close should succeed"
+    [ -n "$(fm_pending_reply_get "$dir/$closing" escalation_closed_epoch)" ] \
+      || fail "tick did not retry the open escalation close"
+    fm_pending_reply_tick "$state" || fail "tick after close should succeed"
+    [ ! -e "$dir/$closing" ] && [ -f "$archive/$closing" ] \
+      || fail "record whose escalation closed was not archived on the next tick"
+    pass "retention archives only settled records past their age, never deleting"
+  )
+}
+
+test_tick_scales_over_resolved_records() {
+  (
+    local home small state small_state dir resolved open1 open2 start elapsed bound=20
+    local count=3000 before after
+    home=$(setup_parent scale)
+    state="$home/state"
+    dir=$(fm_pending_reply_dir "$state")
+    # shellcheck disable=SC2030,SC2031
+    export FM_PENDING_REPLY_NOW=20000
+    resolved=$(fm_pending_reply_create "$home" "$state" done-mate "settled request")
+    fm_pending_reply_mark_delivered "$state" "$resolved"
+    printf 'done [corr=%s]: ok\n' "$resolved" > "$state/done-mate.status"
+    fm_pending_reply_try_resolve "$state" "$resolved" || fail "resolved fixture should resolve"
+    clone_resolved_records "$state" "$resolved" "$count"
+    open1=$(fm_pending_reply_create "$home" "$state" hibit "answered request")
+    open2=$(fm_pending_reply_create "$home" "$state" hibit "unanswered request")
+    fm_pending_reply_mark_delivered "$state" "$open1"
+    fm_pending_reply_mark_delivered "$state" "$open2"
+    printf 'done [corr=%s]: answered\n' "$open1" > "$state/hibit.status"
+
+    # The same open records with no resolved backlog: the reference outcome.
+    small=$(setup_parent scale-reference)
+    small_state="$small/state"
+    mkdir -p "$(fm_pending_reply_dir "$small_state")"
+    for corr in "$open1" "$open2"; do
+      sed "s#$home#$small#g" "$dir/$corr" > "$(fm_pending_reply_path "$small_state" "$corr")"
+    done
+    cp "$state/hibit.status" "$small_state/hibit.status"
+    fm_pending_reply_tick "$small_state" || fail "reference tick should succeed"
+
+    before=$(cd "$dir" && cat -- 70000000* | cksum)
+    start=$SECONDS
+    fm_pending_reply_tick "$state" || fail "tick over a large resolved backlog should succeed"
+    elapsed=$((SECONDS - start))
+    [ "$elapsed" -le "$bound" ] \
+      || fail "tick over $count resolved records took ${elapsed}s (bound ${bound}s)"
+    after=$(cd "$dir" && cat -- 70000000* | cksum)
+    [ "$before" = "$after" ] || fail "tick changed a settled record"
+    [ "$(find "$dir" -maxdepth 1 -type f ! -name '.*' | wc -l | tr -d ' ')" = "$((count + 3))" ] \
+      || fail "tick moved settled records still inside retention"
+    for corr in "$open1" "$open2"; do
+      # Scan signatures name the status file's inode, which differs by home.
+      [ "$(sed -e "s#$home#$small#g" -e '/_scan_signature=/d' "$dir/$corr")" \
+        = "$(sed '/_scan_signature=/d' "$(fm_pending_reply_path "$small_state" "$corr")")" ] \
+        || fail "open record $corr diverged from the reference tick"
+    done
+    cmp -s "$state/hibit.status" "$small_state/hibit.status" \
+      || fail "parent status diverged from the reference tick"
+    [ "$(phase_of "$state" "$open1")" = resolved ] || fail "answered request was not resolved"
+    pass "tick over $count resolved records finishes in ${elapsed}s and changes nothing"
+  )
+}
+
 test_normal_correlated_reply_resolves_once
 test_completed_turn_no_report_triggers_one_recovery
 test_recovery_attempt_is_never_reinjected
@@ -1641,5 +1777,7 @@ test_mechanical_helper_writes_parent_channel
 test_remote_parent_replies_is_not_wrong_home
 test_local_parent_replies_is_wrong_home_evidence
 test_escalated_undelivered_correlation_stays_retryable
+test_retention_archives_only_settled_records || exit 1
+test_tick_scales_over_resolved_records || exit 1
 
 printf 'ok - all pending-reply tests passed\n'

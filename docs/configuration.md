@@ -91,7 +91,7 @@ Each effective `FM_HOME` contains private operational directories.
 - One-shot Bearings reconcile requests under `state/reconcile-notify/`.
 - Private secondmate config-reread generations with their retry and quarantine state.
 - Per-task steering-inbox records under `state/<id>.inbox/` (`bin/fm-task-inbox-lib.sh`).
-- Parent-owned secondmate pending-reply records under `state/pending-replies/` (`bin/fm-pending-reply-lib.sh`).
+- Parent-owned secondmate pending-reply records under `state/pending-replies/`, with settled records moved to `state/pending-replies-archive/` after a retention age (`bin/fm-pending-reply-lib.sh` owns both).
 
 `config/` holds local gitignored operating choices, including explicit extension bindings under `config/extensions.d/`.
 

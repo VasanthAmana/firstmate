@@ -1745,6 +1745,66 @@ expected=$(printf '%s\n' \
 [ "$deduped" = "$expected" ] || fail "distinct result generations were coalesced or reordered: $deduped"
 pass "pending results preserve numeric order and distinct wake identity"
 
+# --- per-source pending scans stay bounded on a large inbox -----------------
+# A long-lived home accumulates thousands of handled results. Every per-source
+# question must cost that source's results, not the whole inbox, and must give
+# exactly the answer the whole-inbox list filtered to that source gives.
+HSCALE="$TMP_ROOT/hscale"; new_home "$HSCALE"
+hs_inbox="$HSCALE/state/procevent-inbox"
+mkdir -p "$hs_inbox"
+hs_sources=48
+hs_per_source=70
+for ((s = 1; s <= hs_sources; s++)); do
+  for ((q = 1; q <= hs_per_source; q++)); do
+    printf 'r\n' > "$hs_inbox/scale-$s.$q.result"
+    printf 'lavish\n' > "$hs_inbox/scale-$s.$q.adapter"
+    # Every round is handled except the last two of each source.
+    [ "$q" -gt $((hs_per_source - 2)) ] || : > "$hs_inbox/scale-$s.$q.handled"
+  done
+done
+# A dotted id sharing a prefix, a refused symlink, and a malformed sequence.
+printf 'r\n' > "$hs_inbox/scale-1.sub.5.result"
+ln -s "$hs_inbox/scale-2.1.result" "$hs_inbox/scale-2.999.result"
+printf 'r\n' > "$hs_inbox/scale-3.x.result"
+chmod 0600 "$hs_inbox"/*.result "$hs_inbox"/*.adapter 2>/dev/null || true
+hs_start=$SECONDS
+hs_mismatch=$(bash -c '
+  . "$1/bin/fm-pr-lib.sh"
+  . "$1/bin/fm-procevent-lib.sh"
+  all=$(fm_procevent_pending "$2")
+  for ((s = 1; s <= $3; s++)); do
+    id=scale-$s
+    want=$(printf "%s\n" "$all" | awk -v id="$id" "index(\$0, \"/\" id \".\") { print }")
+    got=$(fm_procevent_pending "$2" "$id")
+    [ "$got" = "$want" ] || printf "%s\n" "$id"
+  done
+' _ "$ROOT" "$HSCALE/state" "$hs_sources")
+hs_elapsed=$((SECONDS - hs_start))
+[ -z "$hs_mismatch" ] || fail "per-source pending diverged from the filtered whole-inbox list: $hs_mismatch"
+hs_one=$(bash -c '. "$1/bin/fm-pr-lib.sh"; . "$1/bin/fm-procevent-lib.sh"; fm_procevent_pending "$2" scale-1' _ "$ROOT" "$HSCALE/state")
+hs_expected=$(printf '%s\n' \
+  "$hs_inbox/scale-1.sub.5.result" \
+  "$hs_inbox/scale-1.69.result" \
+  "$hs_inbox/scale-1.70.result")
+[ "$hs_one" = "$hs_expected" ] || fail "per-source pending lost order, handled markers, or the shared-prefix id: $hs_one"
+case "$(bash -c '. "$1/bin/fm-pr-lib.sh"; . "$1/bin/fm-procevent-lib.sh"; fm_procevent_pending "$2" scale-2' _ "$ROOT" "$HSCALE/state")" in
+  *scale-2.999.result*) fail "per-source pending followed a symlinked result" ;;
+esac
+for ((s = 1; s <= hs_sources; s++)); do
+  pe_register "$HSCALE" lavish "scale-$s" -- "$BLOCKER" "$TMP_ROOT/never-scale" >/dev/null \
+    || fail "could not register scale fixture source scale-$s"
+done
+hs_start=$SECONDS
+hs_list=$(pe "$HSCALE" list)
+hs_list_elapsed=$((SECONDS - hs_start))
+[ "$(printf '%s\n' "$hs_list" | awk '$1 == "scale-7" { print $4 }')" = 2 ] \
+  || fail "list miscounted one source's pending rounds: $hs_list"
+[ "$(printf '%s\n' "$hs_list" | awk '$1 == "scale-1" { print $4 }')" = 3 ] \
+  || fail "list changed the shared-prefix pending count: $hs_list"
+[ "$hs_elapsed" -le 20 ] && [ "$hs_list_elapsed" -le 20 ] \
+  || fail "per-source pending over $((hs_sources * hs_per_source)) results took ${hs_elapsed}s, list took ${hs_list_elapsed}s (bound 20s)"
+pass "per-source pending over $((hs_sources * hs_per_source)) results matches the filtered list in ${hs_elapsed}s, list in ${hs_list_elapsed}s"
+
 # --- two homes cannot both own one canonical source -------------------------
 HA="$TMP_ROOT/ha"; HB="$TMP_ROOT/hb"; new_home "$HA"; new_home "$HB"
 TRIG2="$TMP_ROOT/trigger-two"
