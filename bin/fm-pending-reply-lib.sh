@@ -1444,28 +1444,6 @@ fm_pending_reply_tick_one() {  # <state-dir> <corr_id> <busy_state> [secondmate-
   return 0
 }
 
-# Load the fields the tick reads from one record in a single pass, into
-# _FM_PR_F_<key> globals. The last occurrence of a key wins, matching
-# fm_pending_reply_get.
-_fm_pending_reply_read_fields() {  # <record-path>
-  local line
-  _FM_PR_F_corr_id='' _FM_PR_F_task_id='' _FM_PR_F_phase=''
-  _FM_PR_F_escalated_epoch='' _FM_PR_F_escalation_closed_epoch=''
-  _FM_PR_F_resolved_epoch='' _FM_PR_F_created_epoch=''
-  [ -f "$1" ] || return 0
-  while IFS= read -r line || [ -n "$line" ]; do
-    case "$line" in
-      corr_id=*) _FM_PR_F_corr_id=${line#*=} ;;
-      task_id=*) _FM_PR_F_task_id=${line#*=} ;;
-      phase=*) _FM_PR_F_phase=${line#*=} ;;
-      escalated_epoch=*) _FM_PR_F_escalated_epoch=${line#*=} ;;
-      escalation_closed_epoch=*) _FM_PR_F_escalation_closed_epoch=${line#*=} ;;
-      resolved_epoch=*) _FM_PR_F_resolved_epoch=${line#*=} ;;
-      created_epoch=*) _FM_PR_F_created_epoch=${line#*=} ;;
-    esac
-  done < "$1"
-}
-
 fm_pending_reply_retention_secs() {
   local r=${FM_PENDING_REPLY_RETENTION_SECS:-$FM_PENDING_REPLY_RETENTION_DEFAULT}
   case "$r" in
@@ -1494,12 +1472,15 @@ _fm_pending_reply_archive() {  # <state-dir> <record-path> <corr_id>
   [ ! -e "$dest" ] && [ ! -L "$dest" ] || return 1
   STATE=$state
   lock="$state/.pending-reply-$corr.lock"
-  # shellcheck source=bin/fm-wake-lib.sh
+  # fm-wake-lib.sh is a canonical lint root and is already followed from this
+  # library's other lock sites. Keep this site an analysis boundary: one more
+  # followed copy of its graph pushes the bounded CI lint worker past its memory.
+  # shellcheck source=/dev/null
   . "$_FM_PENDING_REPLY_LIB_DIR/fm-wake-lib.sh"
   fm_lock_acquire_wait "$lock" || return 1
-  _fm_pending_reply_read_fields "$rec"
-  if [ "$_FM_PR_F_phase" = resolved ] \
-    && { [ -z "$_FM_PR_F_escalated_epoch" ] || [ -n "$_FM_PR_F_escalation_closed_epoch" ]; }; then
+  if [ "$(fm_pending_reply_get "$rec" phase)" = resolved ] \
+    && { [ -z "$(fm_pending_reply_get "$rec" escalated_epoch)" ] \
+      || [ -n "$(fm_pending_reply_get "$rec" escalation_closed_epoch)" ]; }; then
     mv -- "$rec" "$dest" || rc=1
   fi
   fm_lock_release "$lock"
@@ -1512,6 +1493,7 @@ _fm_pending_reply_archive() {  # <state-dir> <record-path> <corr_id>
 fm_pending_reply_tick() {  # <state-dir>
   local state=$1 dir rec corr task_id phase delivered meta backend target label busy sm_home harness remote_host
   local observation observation_task found i now retention settled
+  local line escalated closed resolved_at created_at
   local -a observation_tasks=() observation_values=()
   dir=$(fm_pending_reply_dir "$state")
   [ -d "$dir" ] || return 0
@@ -1524,18 +1506,27 @@ fm_pending_reply_tick() {  # <state-dir>
     esac
     # One read of the record serves every field the resolved fast path needs,
     # because resolved records are the bulk of the directory on a busy home.
-    _fm_pending_reply_read_fields "$rec"
-    corr=$_FM_PR_F_corr_id
+    # The last occurrence of a key wins, matching fm_pending_reply_get.
+    corr='' task_id='' phase='' escalated='' closed='' resolved_at='' created_at=''
+    while IFS= read -r line || [ -n "$line" ]; do
+      case "$line" in
+        corr_id=*) corr=${line#*=} ;;
+        task_id=*) task_id=${line#*=} ;;
+        phase=*) phase=${line#*=} ;;
+        escalated_epoch=*) escalated=${line#*=} ;;
+        escalation_closed_epoch=*) closed=${line#*=} ;;
+        resolved_epoch=*) resolved_at=${line#*=} ;;
+        created_epoch=*) created_at=${line#*=} ;;
+      esac
+    done < "$rec"
     [ -n "$corr" ] || corr=${rec##*/}
-    task_id=$_FM_PR_F_task_id
-    phase=$_FM_PR_F_phase
     if [ "$phase" = resolved ]; then
-      if [ -n "$_FM_PR_F_escalated_epoch" ] && [ -z "$_FM_PR_F_escalation_closed_epoch" ]; then
+      if [ -n "$escalated" ] && [ -z "$closed" ]; then
         # The retry that makes the close converge after a transient write
         # failure; every other resolved record is a no-op for the close.
         fm_pending_reply_close_escalation "$state" "$corr" || true
       else
-        settled=${_FM_PR_F_resolved_epoch:-$_FM_PR_F_created_epoch}
+        settled=${resolved_at:-$created_at}
         case "$settled" in ''|*[!0-9]*) continue ;; esac
         [ "$retention" -gt 0 ] && [ $((now - settled)) -ge "$retention" ] || continue
         _fm_pending_reply_archive "$state" "$rec" "$corr" || true
