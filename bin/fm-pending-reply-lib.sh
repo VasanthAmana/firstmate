@@ -95,11 +95,23 @@
 # (bin/fm-backlog-handoff.sh's receiver wake) stayed refused forever once the
 # watcher escalated between the lost transport and the next resume.
 #
+# Retention: the tick moves a resolved record whose escalation never opened or
+# has been closed into state/pending-replies-archive/ (the pending-replies
+# directory plus -archive under FM_PENDING_REPLY_DIR_OVERRIDE) once its
+# resolved_epoch (created_epoch when that is absent) is older than
+# FM_PENDING_REPLY_RETENTION_SECS. The move holds the per-correlation lock and
+# re-checks the record under it, never overwrites an archived record of the
+# same name, and never deletes anything. An unresolved record, or a resolved
+# one whose escalation is still open, is never archived; see the invariant
+# above against silently expiring unresolved records. Without retention every
+# poll walked every record ever created.
+#
 # Sourced by bin/fm-send.sh, bin/fm-watch.sh, bin/fm-secondmate-report.sh, and
 # tests. No side effects on source. set -u / set -e safe.
 #
 # Tunables (env):
 #   FM_PENDING_REPLY_GRACE_SECS   default 120
+#   FM_PENDING_REPLY_RETENTION_SECS default 604800 (7 days); 0 disables archiving
 #   FM_PENDING_REPLY_DIR_OVERRIDE override the pending-replies directory (tests)
 #   FM_PENDING_REPLY_SEND_HOOK    optional command template for recovery delivery
 #                                 (tests); receives task_id and full message as args
@@ -119,6 +131,7 @@ _FM_PENDING_REPLY_LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd 2>/dev/n
 FM_PENDING_REPLY_SCHEMA='fm-pending-reply.v1'
 FM_PENDING_REPLY_CORR_RE='corr=[A-Fa-f0-9]{16}'
 FM_PENDING_REPLY_GRACE_DEFAULT=120
+FM_PENDING_REPLY_RETENTION_DEFAULT=604800
 
 fm_pending_reply_now() {
   if [ -n "${FM_PENDING_REPLY_NOW:-}" ]; then
@@ -1431,28 +1444,93 @@ fm_pending_reply_tick_one() {  # <state-dir> <corr_id> <busy_state> [secondmate-
   return 0
 }
 
+fm_pending_reply_retention_secs() {
+  local r=${FM_PENDING_REPLY_RETENTION_SECS:-$FM_PENDING_REPLY_RETENTION_DEFAULT}
+  case "$r" in
+    ''|*[!0-9]*) r=$FM_PENDING_REPLY_RETENTION_DEFAULT ;;
+  esac
+  printf '%s' "$r"
+}
+
+fm_pending_reply_archive_dir() {  # <state-dir>
+  printf '%s-archive' "$(fm_pending_reply_dir "$1")"
+}
+
+# Move one settled record, already found past retention by the tick, into the
+# archive. The settled checks are repeated under the per-correlation lock
+# before the move.
+_fm_pending_reply_archive() {  # <state-dir> <record-path> <corr_id>
+  local state=$1 rec=$2 corr=$3 archive dest lock rc=0
+  local STATE FM_WAKE_QUEUE FM_WAKE_QUEUE_LOCK
+  [ -f "$rec" ] && [ ! -L "$rec" ] || return 0
+  archive=$(fm_pending_reply_archive_dir "$state")
+  if [ ! -d "$archive" ]; then
+    (umask 077; mkdir -p "$archive") || return 1
+  fi
+  [ -d "$archive" ] && [ ! -L "$archive" ] || return 1
+  dest="$archive/${rec##*/}"
+  [ ! -e "$dest" ] && [ ! -L "$dest" ] || return 1
+  STATE=$state
+  lock="$state/.pending-reply-$corr.lock"
+  # fm-wake-lib.sh is a canonical lint root and is already followed from this
+  # library's other lock sites. Keep this site an analysis boundary: one more
+  # followed copy of its graph pushes the bounded CI lint worker past its memory.
+  # shellcheck source=/dev/null
+  . "$_FM_PENDING_REPLY_LIB_DIR/fm-wake-lib.sh"
+  fm_lock_acquire_wait "$lock" || return 1
+  if [ "$(fm_pending_reply_get "$rec" phase)" = resolved ] \
+    && { [ -z "$(fm_pending_reply_get "$rec" escalated_epoch)" ] \
+      || [ -n "$(fm_pending_reply_get "$rec" escalation_closed_epoch)" ]; }; then
+    mv -- "$rec" "$dest" || rc=1
+  fi
+  fm_lock_release "$lock"
+  return "$rc"
+}
+
 # Scan every pending record for this parent state. Safe to call every poll.
 # Never scrapes secondmate conversation; uses only parent status, backend busy
 # state, and optional secondmate-home wrong-home path checks.
 fm_pending_reply_tick() {  # <state-dir>
   local state=$1 dir rec corr task_id phase delivered meta backend target label busy sm_home harness remote_host
-  local observation observation_task found i
+  local observation observation_task found i now retention settled
+  local line escalated closed resolved_at created_at
   local -a observation_tasks=() observation_values=()
   dir=$(fm_pending_reply_dir "$state")
   [ -d "$dir" ] || return 0
+  now=$(fm_pending_reply_now)
+  retention=$(fm_pending_reply_retention_secs)
   for rec in "$dir"/*; do
     [ -f "$rec" ] || continue
-    case "$(basename "$rec")" in
+    case "${rec##*/}" in
       .*) continue ;;
     esac
-    corr=$(fm_pending_reply_get "$rec" corr_id)
-    [ -n "$corr" ] || corr=$(basename "$rec")
-    task_id=$(fm_pending_reply_get "$rec" task_id)
-    phase=$(fm_pending_reply_get "$rec" phase)
+    # One read of the record serves every field the resolved fast path needs,
+    # because resolved records are the bulk of the directory on a busy home.
+    # The last occurrence of a key wins, matching fm_pending_reply_get.
+    corr='' task_id='' phase='' escalated='' closed='' resolved_at='' created_at=''
+    while IFS= read -r line || [ -n "$line" ]; do
+      case "$line" in
+        corr_id=*) corr=${line#*=} ;;
+        task_id=*) task_id=${line#*=} ;;
+        phase=*) phase=${line#*=} ;;
+        escalated_epoch=*) escalated=${line#*=} ;;
+        escalation_closed_epoch=*) closed=${line#*=} ;;
+        resolved_epoch=*) resolved_at=${line#*=} ;;
+        created_epoch=*) created_at=${line#*=} ;;
+      esac
+    done < "$rec"
+    [ -n "$corr" ] || corr=${rec##*/}
     if [ "$phase" = resolved ]; then
-      # Cheap no-op unless an escalation for this record is still open; this is
-      # the retry that makes the close converge after a transient write failure.
-      fm_pending_reply_close_escalation "$state" "$corr" || true
+      if [ -n "$escalated" ] && [ -z "$closed" ]; then
+        # The retry that makes the close converge after a transient write
+        # failure; every other resolved record is a no-op for the close.
+        fm_pending_reply_close_escalation "$state" "$corr" || true
+      else
+        settled=${resolved_at:-$created_at}
+        case "$settled" in ''|*[!0-9]*) continue ;; esac
+        [ "$retention" -gt 0 ] && [ $((now - settled)) -ge "$retention" ] || continue
+        _fm_pending_reply_archive "$state" "$rec" "$corr" || true
+      fi
       continue
     fi
     fm_pending_reply_reconcile_delivery "$state" "$corr" || true

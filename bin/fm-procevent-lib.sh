@@ -1171,18 +1171,30 @@ fm_procevent_result_owner_task() {  # <result-path>
   printf '%s\n' "$task"
 }
 
-# fm_procevent_pending <state>
+# fm_procevent_pending <state> [source-id]
 # Print every durably captured result that has no durable handled
 # acknowledgement yet, oldest first. A result stays here - and so remains
 # eligible for repeat publication on the existing durable wake queue - across
 # any number of restarts and drains until `fm_procevent_mark_handled` records
 # it; this is what makes a restart between publication and handling recover
 # instead of silently losing the result.
+# With <source-id>, only that source's results are examined: the glob is
+# `<id>.*.result`, so the set and order equal the whole-inbox list filtered to
+# names beginning `<id>.`, while the cost is proportional to that source rather
+# than to every result the inbox has ever captured. Per-source callers must use
+# this form; the whole-inbox form is for the one fleet-wide publish pass.
 fm_procevent_pending() {
-  local state=$1 inbox result base seq
+  local state=$1 id=${2-} inbox result base seq
   inbox=$(fm_procevent_inbox_dir "$state")
   [ -d "$inbox" ] || return 0
-  for result in "$inbox"/*.result; do
+  local -a results
+  if [ -n "$id" ]; then
+    fm_procevent_source_id_valid "$id" || return 1
+    results=("$inbox/$id".*.result)
+  else
+    results=("$inbox"/*.result)
+  fi
+  for result in "${results[@]}"; do
     [ -f "$result" ] && [ ! -L "$result" ] || continue
     [ -e "${result%.result}.handled" ] && continue
     base=${result%.result}
