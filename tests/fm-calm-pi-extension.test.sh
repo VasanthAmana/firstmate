@@ -38,18 +38,43 @@ cleanup() {
 }
 trap cleanup EXIT
 
-wait_for_text() {
-  local file=$1 text=$2 i=0
-  while [ "$i" -lt 120 ]; do
+# Budget for startup/restart waits: 600 polls x 0.05 s = 30 s. Local Pi restores take
+# about 1.6-2.5 s, but loaded CI runners are several times slower.
+wait_for_all_text() {
+  local file=$1 text i=0 all
+  shift
+  while [ "$i" -lt 600 ]; do
     # Include recent scrollback: expanding a long restored transcript can move
     # the asserted tool output above the current viewport while the footer and
-    # editor remain visible.
+    # editor remain visible. Re-capture every poll so every token must be present
+    # in the same snapshot, which a mid-redraw capture cannot satisfy.
     tmux -L "$TMUX_SOCKET" capture-pane -p -t "$TMUX_SESSION" -S -600 >"$file" 2>/dev/null || true
-    grep -Fq "$text" "$file" 2>/dev/null && return 0
+    all=1
+    for text in "$@"; do
+      grep -Fq -- "$text" "$file" 2>/dev/null || { all=0; break; }
+    done
+    [ "$all" -eq 1 ] && return 0
     sleep 0.05
     i=$((i + 1))
   done
   return 1
+}
+
+wait_for_text() {
+  wait_for_all_text "$1" "$2"
+}
+
+# tmux exits its server when the last session dies; wait for that so the next
+# new-session on the same socket cannot race a dying server.
+kill_session_and_wait() {
+  local i=0
+  tmux -L "$TMUX_SOCKET" kill-session -t "$TMUX_SESSION" 2>/dev/null || true
+  while [ "$i" -lt 200 ]; do
+    tmux -L "$TMUX_SOCKET" list-sessions >/dev/null 2>&1 || return 0
+    sleep 0.05
+    i=$((i + 1))
+  done
+  return 0
 }
 
 find_chrome() {
@@ -1329,6 +1354,7 @@ async function assertStockHtmlRendering(command, submitData) {
   terminalInputHandler(submitData);
   const htmlRenderer = createToolHtmlRenderer({
     getToolDefinition: (name) => tools.find((tool) => tool.name === name),
+    getToolRenderers: (name) => tools.find((tool) => tool.name === name),
     theme,
     cwd: process.cwd(),
   });
@@ -1360,6 +1386,7 @@ editorText = "/export remapped.html";
 terminalInputHandler("\r");
 const unmatchedRenderer = createToolHtmlRenderer({
   getToolDefinition: (name) => tools.find((tool) => tool.name === name),
+  getToolRenderers: (name) => tools.find((tool) => tool.name === name),
   theme,
   cwd: process.cwd(),
 });
@@ -1810,7 +1837,7 @@ test_operational_followup_turn_e2e() {
   cp "$WORKING_SHIP" "$project/.pi/extensions/lib/fm-calm-working-ship.ts"
   cp "$WORKING_SHIP_SPRITE" "$project/.pi/extensions/lib/fm-calm-working-ship-sprite.ts"
   cp "$PI_OPERATIONAL_INPUT" "$project/.pi/extensions/lib/fm-operational-input.ts"
-  printf '%s\n' '{"followUpMode":"all"}' >"$config/settings.json"
+  printf '%s\n' '{"followUpMode":"all","tuiMode":"regular"}' >"$config/settings.json"
 
   cat >"$project/followup-e2e.ts" <<'TS'
 import {
@@ -1944,7 +1971,7 @@ TS
     local shape=${6:-single}
     local extensions
 
-    tmux -L "$TMUX_SOCKET" kill-session -t "$TMUX_SESSION" 2>/dev/null || true
+    kill_session_and_wait
     if [ "$calm_state" = absent ]; then
       rm -f "$home/config/calm"
       extensions='-e ./followup-e2e.ts'
@@ -2095,11 +2122,11 @@ JS
     tmux -L "$TMUX_SOCKET" send-keys -t "$TMUX_SESSION" -l '/quit'
     tmux -L "$TMUX_SOCKET" send-keys -t "$TMUX_SESSION" Enter
     sleep 0.2
-    tmux -L "$TMUX_SOCKET" kill-session -t "$TMUX_SESSION" 2>/dev/null || true
+    kill_session_and_wait
   }
 
   replay_exact_case() {
-    tmux -L "$TMUX_SOCKET" kill-session -t "$TMUX_SESSION" 2>/dev/null || true
+    kill_session_and_wait
     printf '%s\n' on >"$home/config/calm"
     tmux -L "$TMUX_SOCKET" new-session -d -s "$TMUX_SESSION" -x 160 -y 36 \
       "cd '$project' && env FM_HOME='$home' PI_CODING_AGENT_DIR='$config' FM_OPERATIONAL_INPUT_SCRIPT='$OPERATIONAL_INPUT' PI_OFFLINE=1 pi --approve --no-context-files --no-skills --no-prompt-templates --no-extensions -e ./.pi/extensions/fm-calm.ts -e ./followup-e2e.ts --session '$exact_session'; rc=\$?; printf '\nPI_EXIT=%s\n' \"\$rc\"; sleep 20"
@@ -2135,7 +2162,7 @@ JS
     tmux -L "$TMUX_SOCKET" send-keys -t "$TMUX_SESSION" -l '/quit'
     tmux -L "$TMUX_SOCKET" send-keys -t "$TMUX_SESSION" Enter
     sleep 0.2
-    tmux -L "$TMUX_SOCKET" kill-session -t "$TMUX_SESSION" 2>/dev/null || true
+    kill_session_and_wait
   }
 
   run_followup_case loaded-on on loaded_on 1
@@ -2187,7 +2214,7 @@ test_hidden_block_geometry_e2e() {
   cp "$WORKING_SHIP_SPRITE" "$project/.pi/extensions/lib/fm-calm-working-ship-sprite.ts"
   cp "$PI_OPERATIONAL_INPUT" "$project/.pi/extensions/lib/fm-operational-input.ts"
   printf '%s\n' on >"$home/config/calm"
-  printf '%s\n' '{"hideThinkingBlock":true,"terminal":{"clearOnShrink":false}}' >"$config/settings.json"
+  printf '%s\n' '{"hideThinkingBlock":true,"tuiMode":"regular","terminal":{"clearOnShrink":false}}' >"$config/settings.json"
   printf '%s\n' 'tool result one' >"$project/probe-one.txt"
   printf '%s\n' 'tool result two' >"$project/probe-two.txt"
   cat >"$project/.agents/skills/ahoy/SKILL.md" <<'MD'
@@ -2260,7 +2287,7 @@ TS
 
   start_geometry_pi() {
     local session_arg=$1
-    tmux -L "$TMUX_SOCKET" kill-session -t "$TMUX_SESSION" 2>/dev/null || true
+    kill_session_and_wait
     tmux -L "$TMUX_SOCKET" new-session -d -s "$TMUX_SESSION" -x 100 -y 44 \
       "cd '$project' && env FM_HOME='$home' PI_CODING_AGENT_DIR='$config' PI_OFFLINE=1 pi --approve --no-context-files --no-prompt-templates --no-extensions -e ./.pi/extensions/fm-calm.ts -e ./geometry-provider.ts $session_arg; rc=\$?; printf '\nPI_EXIT=%s\n' \"\$rc\"; sleep 20"
   }
@@ -2385,7 +2412,7 @@ TS
   tmux -L "$TMUX_SOCKET" send-keys -t "$TMUX_SESSION" -l '/quit'
   tmux -L "$TMUX_SOCKET" send-keys -t "$TMUX_SESSION" Enter
   sleep 0.2
-  tmux -L "$TMUX_SOCKET" kill-session -t "$TMUX_SESSION" 2>/dev/null || true
+  kill_session_and_wait
   start_geometry_pi "--session '$session_file'"
   wait_for_geometry_text "$restarted_snapshot" "visible row two" \
     || fail "Pi did not restore the Calm hidden-block geometry session"
@@ -2395,7 +2422,7 @@ TS
   tmux -L "$TMUX_SOCKET" send-keys -t "$TMUX_SESSION" -l '/quit'
   tmux -L "$TMUX_SOCKET" send-keys -t "$TMUX_SESSION" Enter
   sleep 0.2
-  tmux -L "$TMUX_SOCKET" kill-session -t "$TMUX_SESSION" 2>/dev/null || true
+  kill_session_and_wait
   pass "Pi Calm native /skill:ahoy geometry keeps every collapsed thinking and tool block at zero height while preserving expansion, history, restart, and Calm-off rendering"
 }
 
@@ -3629,7 +3656,7 @@ export default function (pi: ExtensionAPI): void {
 }
 TS
   printf '%s\n' '{"tui.input.submit":"alt+s"}' >"$config/keybindings.json"
-  printf '%s\n' '{"hideThinkingBlock":true}' >"$config/settings.json"
+  printf '%s\n' '{"hideThinkingBlock":true,"tuiMode":"regular"}' >"$config/settings.json"
   now=$(date -u +%Y-%m-%dT%H:%M:%S.000Z)
   cat >"$session_file" <<JSON
 {"type":"session","version":3,"id":"11111111-1111-4111-8111-111111111111","timestamp":"$now","cwd":"$project"}
@@ -3653,7 +3680,9 @@ JSON
 
   tmux -L "$TMUX_SOCKET" new-session -d -s "$TMUX_SESSION" -x 180 -y 44 \
     "cd '$project' && env FM_HOME='$home' PI_CODING_AGENT_DIR='$config' FM_OPERATIONAL_INPUT_SCRIPT='$OPERATIONAL_INPUT' PI_OFFLINE=1 pi --approve --no-skills --no-prompt-templates --no-context-files --session '$session_file'; rc=\$?; printf '\nPI_EXIT=%s\n' \"\$rc\"; sleep 30"
-  wait_for_text "$default_snapshot" "The deterministic tool example is complete." \
+  wait_for_all_text "$default_snapshot" "The deterministic tool example is complete." \
+    "CALM_E2E_OUTPUT" "fm_watch_arm_pi" "FIRSTMATE WATCHER WAKE: signal: /tmp/probe.status" \
+    "Thinking..." "fm-calm.ts" \
     || fail "Pi calm E2E did not reach the restored session transcript"
   assert_contains "$(cat "$default_snapshot")" "CALM_E2E_OUTPUT" "calm mode was not off by default"
   assert_contains "$(cat "$default_snapshot")" "fm_watch_arm_pi" "Calm-off transcript did not show the Firstmate watcher tool"
@@ -3866,8 +3895,10 @@ const tree = dom.match(/<div[^>]*id="tree-container"[^>]*>([\s\S]*?)<div[^>]*id=
 if (!messages || !tree) process.exit(1);
 if (!/<div class="user-message"[^>]*>[\s\S]*Show a deterministic tool example\./.test(messages)) process.exit(1);
 if (!/<div class="assistant-message"[^>]*>[\s\S]*The deterministic tool example is complete\./.test(messages)) process.exit(1);
-if (messages.includes('<div class="hook-message"')) process.exit(1);
-if (messages.includes("[firstmate-synthetic-input]")) process.exit(1);
+// Pi 1.0 keeps display:false custom messages in the export DOM behind a CSS-hidden
+// class (shown only by the H toggle); older Pi omits them. Either way none is visible.
+const hookMessages = messages.match(/<div class="hook-message[^"]*"/g) ?? [];
+if (hookMessages.some((hook) => !hook.includes("hook-message-hidden"))) process.exit(1);
 for (const current of ["CURRENT_WATCHER_E2E", "CURRENT_TURN_END_E2E", "CURRENT_AWAY_E2E", "CURRENT_FROM_FIRSTMATE_E2E", "CURRENT_LAUNCH_BRIEF_E2E"]) {
   if (!messages.includes(current)) process.exit(1);
 }
@@ -3908,7 +3939,8 @@ JS
 
   tmux -L "$TMUX_SOCKET" send-keys -t "$TMUX_SESSION" -l "/calm"
   tmux -L "$TMUX_SOCKET" send-keys -t "$TMUX_SESSION" M-s
-  wait_for_text "$restored_snapshot" "CALM_E2E_OUTPUT" \
+  wait_for_all_text "$restored_snapshot" "CALM_E2E_OUTPUT" "fm_watch_arm_pi" \
+    "FIRSTMATE WATCHER WAKE: signal: /tmp/probe.status" "/tmp/active-probe.status" \
     || fail "second /calm did not restore tool result output"
   wait_for_text "$restored_snapshot" "/tmp/active-probe.status" \
     || fail "second /calm did not restore a synthetic row received while Calm was active"
@@ -4262,11 +4294,11 @@ JS
   tmux -L "$TMUX_SOCKET" send-keys -t "$TMUX_SESSION" M-s
   wait_for_text "$working_response_snapshot" "PI_EXIT=0" \
     || fail "Pi did not exit cleanly before the Calm persistence restart"
-  tmux -L "$TMUX_SOCKET" kill-session -t "$TMUX_SESSION" 2>/dev/null || true
+  kill_session_and_wait
 
   tmux -L "$TMUX_SOCKET" new-session -d -s "$TMUX_SESSION" -x 180 -y 44 \
     "cd '$project' && env FM_HOME='$home' PI_CODING_AGENT_DIR='$config' FM_OPERATIONAL_INPUT_SCRIPT='$OPERATIONAL_INPUT' PI_OFFLINE=1 pi --approve --no-skills --no-prompt-templates --no-context-files --session '$session_file'; rc=\$?; printf '\nPI_EXIT=%s\n' \"\$rc\"; sleep 30"
-  wait_for_text "$restarted_snapshot" "CALM_WORKING_E2E_RESPONSE" \
+  wait_for_all_text "$restarted_snapshot" "CALM_WORKING_E2E_RESPONSE" "CALM_WORKING_E2E_PROMPT" \
     || fail "Pi did not restore the persisted session after restart"
   assert_not_contains "$(cat "$restarted_snapshot")" "CALM_E2E_OUTPUT" "restart/resume reset Calm and restored a tool row"
   assert_not_contains "$(cat "$restarted_snapshot")" "fm_watch_arm_pi" "restart/resume reset Calm and restored the Firstmate watcher tool"
