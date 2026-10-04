@@ -1,0 +1,26 @@
+== before (no config)
+| host | mates | provider | account | 5h left | 5h resets | 5h pace | week left | week resets | week pace | month left | month resets | other |
+| --- | --- | --- | --- | ---: | --- | --- | ---: | --- | --- | ---: | --- | --- |
+| local | - | Copilot | - | - | - | - | - | - | - | - | - | 10% - |
+| local | - | claude | - | - | - | - | - | - | - | - | - | 60% - |
+| local | - | codex | - | - | - | - | - | - | - | - | - | 80% - |
+| local | - | copilot | - | - | - | - | - | - | - | - | - | - |
+| local | - | cursor | - | - | - | - | - | - | - | - | - | - |
+
+## attention
+
+- none
+== after (copilot, cursor excluded)
+| host | mates | provider | account | 5h left | 5h resets | 5h pace | week left | week resets | week pace | month left | month resets | other |
+| --- | --- | --- | --- | ---: | --- | --- | ---: | --- | --- | ---: | --- | --- |
+| local | - | claude | - | - | - | - | - | - | - | - | - | 60% - |
+| local | - | codex | - | - | - | - | - | - | - | - | - | 80% - |
+
+## attention
+
+- none
+== toon
+usage[2]{host,mates,provider,account,fiveHourLeft,fiveHourResetsAt,fiveHourPace,weekLeft,weekResetsAt,weekPace,read,monthLeft,monthResetsAt,other}:
+  local,-,claude,-,-,-,-,-,-,-,ok,-,-,60% -
+  local,-,codex,-,-,-,-,-,-,-,ok,-,-,80% -
+attention[0]{host,provider,kind,detail}:
