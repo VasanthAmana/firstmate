@@ -1,0 +1,27 @@
+## BEFORE (no config)
+| host | mates | provider | account | 5h left | 5h resets | 5h pace | week left | week resets | week pace | month left | month resets | other |
+| --- | --- | --- | --- | ---: | --- | --- | ---: | --- | --- | ---: | --- | --- |
+| local | - | claude | c@x.com | 50% | 2026-09-21 13:39 UTC | ahead | - | - | - | - | - | - |
+| local | - | codex | - | - | - | - | 65% | 2026-09-27 04:32 UTC | ahead | - | - | - |
+| local | - | copilot | a@x.com | - | - | - | - | - | - | 40% | 2026-10-21 13:39 UTC | - |
+| local | - | cursor | b@x.com | - | - | - | - | - | - | 30% | 2026-10-21 13:39 UTC | - |
+
+## attention
+
+- local copilot degraded_source: stale data
+- local cursor error: boom
+
+## AFTER (copilot, Cursor excluded)
+| host | mates | provider | account | 5h left | 5h resets | 5h pace | week left | week resets | week pace | month left | month resets | other |
+| --- | --- | --- | --- | ---: | --- | --- | ---: | --- | --- | ---: | --- | --- |
+| local | - | claude | c@x.com | 50% | 2026-09-21 13:39 UTC | ahead | - | - | - | - | - | - |
+| local | - | codex | - | - | - | - | 65% | 2026-09-27 04:32 UTC | ahead | - | - | - |
+
+## attention
+
+- none
+## toon
+usage[2]{host,mates,provider,account,fiveHourLeft,fiveHourResetsAt,fiveHourPace,weekLeft,weekResetsAt,weekPace,read,monthLeft,monthResetsAt,other}:
+  local,-,claude,c@x.com,50,2026-09-21 13:39 UTC,ahead,-,-,-,ok,-,-,-
+  local,-,codex,-,-,-,-,65,2026-09-27 04:32 UTC,ahead,ok,-,-,-
+attention[0]{host,provider,kind,detail}:
