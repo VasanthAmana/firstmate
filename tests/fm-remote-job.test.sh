@@ -372,9 +372,13 @@ fm_remote_job_reap "$ACCOUNT_HOME" "$JOB_ID" || fail "the active readiness job c
 pass "active jobs keep the worker ready for concurrent requests"
 
 # A stale heartbeat used to bypass the stop path, launching replacements
-# against a live owner. Suspend the server to make that fault deterministic.
+# against a live owner. Suspend the server and its independent heartbeat so the
+# stale heartbeat cannot be refreshed while the fault is observed.
 STALE_PID=$(cat "$STATE_ROOT/worker.pid")
 kill -STOP "$STALE_PID"
+for stale_child in $(pgrep -P "$STALE_PID" || true); do
+  kill -STOP "$stale_child" 2>/dev/null || true
+done
 touch -t 200001010000 "$STATE_ROOT/worker.ready"
 fm_remote_job_ensure_worker "$REMOTE_ROOT" "$ACCOUNT_HOME" || fail "$FM_REMOTE_JOB_ERROR"
 [ "$(cat "$STATE_ROOT/worker.pid")" != "$STALE_PID" ] || fail "stale heartbeat retained its stalled owner"
