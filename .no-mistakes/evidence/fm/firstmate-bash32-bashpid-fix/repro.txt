@@ -1,0 +1,8 @@
+--- /Users/amana/.no-mistakes/worktrees/07342c3c4479/01M45490EMDQWKYH8G75NRPWEB
+sub-ok
+rc=0
+main-ok
+--- /tmp/nm-base
+/tmp/nm-base/bin/fm-timeout-lib.sh: line 224: BASHPID: unbound variable
+rc=127
+/tmp/nm-base/bin/fm-timeout-lib.sh: line 224: BASHPID: unbound variable
