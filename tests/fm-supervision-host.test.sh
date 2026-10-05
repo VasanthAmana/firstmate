@@ -1181,6 +1181,8 @@ start_hook_session() {  # <home>
 }
 turn_end() { rm -f "$1/hook.rc"; : > "$1/stop.go"; }
 hook_exited() { [ -s "$1/hook.rc" ]; }
+# The Stop hook captures the host's output in this file while the park runs.
+hook_saw_first_cycle() { grep -qs '^watcher: started pid=' "$1"/state/.claude-autoarm-output.*; }
 
 # Main's rewoken turn drains; the caller runs the printed acknowledgement
 # (MAIN_ACK) when that turn's handling is done.
@@ -1424,6 +1426,11 @@ SH
   start_hook_session "$home"
   turn_end "$home"
   wait_until 150 watcher_live "$home" || fail "hook write failure: no watcher started"
+  # This hand-back exits without printing the close, so the first cycle's
+  # status line is all that tells the Stop hook the host did not die. Let it
+  # reach the hook before the close; otherwise the hook runs the park again
+  # and its notice arrives one arm confirmation timeout later.
+  wait_until 150 hook_saw_first_cycle "$home" || fail "hook write failure: the first cycle's status never reached the Stop hook"
   append_status "$home" 'step one'
   wait_until 250 hook_exited "$home" || fail "hook write failure: the Stop hook did not finish"
   [ "$(cat "$home/offer-count" 2>/dev/null)" -ge 2 ] || fail "fixture: the close did not turn main-only at its turn"
