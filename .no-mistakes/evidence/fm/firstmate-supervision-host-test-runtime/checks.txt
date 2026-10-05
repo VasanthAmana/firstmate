@@ -1,0 +1,10 @@
+FM_TEST_COVERAGE ok total=247 parallel=24 parallel_max_ms=665545 parallel_imbalance_ms=2 parallel_unhinted=0 serial=207 serial_shards=9 serial_unhinted=5 serial_max_ms=1074843 serial_budget_ms=1200000 herdr=16
+Ignoring ffi-1.16.3 because its extensions are not built. Try: gem pristine ffi --version 1.16.3
+Ignoring racc-1.7.3 because its extensions are not built. Try: gem pristine racc --version 1.7.3
+ok - Herdr CI family-run step times out at 20 min under a 75 min job backstop
+ok - aggregate-json merges lane timing artifacts
+Ignoring racc-1.7.3 because its extensions are not built. Try: gem pristine racc --version 1.7.3
+Ignoring ffi-1.16.3 because its extensions are not built. Try: gem pristine ffi --version 1.16.3
+Ignoring racc-1.7.3 because its extensions are not built. Try: gem pristine racc --version 1.7.3
+ok - Herdr keeps a 20 minute step tripwire under a 75 minute job backstop
+fm-doc-audience-check: ok surfaces=119 local_links=734
