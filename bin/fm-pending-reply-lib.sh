@@ -11,8 +11,10 @@
 # Safety property (captain direction 2026-07-22): a secondmate agent may ignore
 # the marker and answer only in its visible conversation. The parent must notice
 # the missing correlated report without scraping that conversation, send exactly
-# one automatic recovery request asking for a repost through the parent channel,
-# and escalate once if the recovery turn also completes without a correlated
+# one automatic recovery request asking for a repost through the parent channel
+# (held back, when config/wait-no-turns is present, while the mate waits on its
+# own open decision or blocker), and
+# escalate once if the recovery turn also completes without a correlated
 # report. Never loop, never repeatedly inject, never silently expire unresolved
 # records, and never treat wrong-home or structured-home heuristics as
 # acknowledgement. A same-basename restatement-copy of the mate home's
@@ -64,7 +66,10 @@
 #   wrong_home_first_sighting= encoded path:line identity of the first sighting
 #   wrong_home_sightings=   comma-separated encoded path:line identities
 #   wrong_home_scan_signature=
-#   grace_secs=             bounded grace before recovery is eligible
+#   grace_secs=             bounded grace before recovery, and before the
+#                           missed-report escalation, are eligible - measured
+#                           from the relevant turn's completion (request or
+#                           recovery), never from delivery or send time
 #
 # Escalation lifecycle: an escalation is not just a message, it OPENS a durable
 # keyed decision in the parent status log, and bin/fm-classify-lib.sh's fold is
@@ -110,22 +115,32 @@
 # tests. No side effects on source. set -u / set -e safe.
 #
 # Tunables (env):
-#   FM_PENDING_REPLY_GRACE_SECS   default 120
+#   FM_PENDING_REPLY_GRACE_SECS   default 120; counted from the request turn's
+#                                 completion for the recovery repost, and from
+#                                 the recovery turn's completion for the
+#                                 missed-report escalation - never from delivery
 #   FM_PENDING_REPLY_RETENTION_SECS default 604800 (7 days); 0 disables archiving
 #   FM_PENDING_REPLY_DIR_OVERRIDE override the pending-replies directory (tests)
 #   FM_PENDING_REPLY_SEND_HOOK    optional command template for recovery delivery
 #                                 (tests); receives task_id and full message as args
 #   FM_PENDING_REPLY_NOW          optional fixed epoch for deterministic tests
 
+# This directive does double duty: it also binds _FM_PENDING_REPLY_LIB_DIR as
+# the bin/ source prefix so the deliberately undirected lazy sources below
+# still resolve for ShellCheck instead of warning SC1091.
 # shellcheck source=bin/fm-marker-lib.sh
 _FM_PENDING_REPLY_LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd 2>/dev/null)" || _FM_PENDING_REPLY_LIB_DIR="."
 # shellcheck source=bin/fm-marker-lib.sh
 . "$_FM_PENDING_REPLY_LIB_DIR/fm-marker-lib.sh"
 # shellcheck source=bin/fm-backend.sh
 . "$_FM_PENDING_REPLY_LIB_DIR/fm-backend.sh"
-# shellcheck source=bin/fm-tmux-lib.sh
+# Deliberately undirected: this library consumes no symbols from
+# bin/fm-tmux-lib.sh, so following it under ShellCheck's external-source
+# traversal would expand that graph for zero cross-file checks.
 . "$_FM_PENDING_REPLY_LIB_DIR/fm-tmux-lib.sh"
-# shellcheck source=bin/fm-classify-lib.sh
+# Deliberately undirected: bin/fm-classify-lib.sh is already expanded inside
+# bin/fm-wake-lib.sh's single directed expansion below; a second directive
+# here would re-expand the same transitive graph.
 . "$_FM_PENDING_REPLY_LIB_DIR/fm-classify-lib.sh"
 
 FM_PENDING_REPLY_SCHEMA='fm-pending-reply.v1'
@@ -937,7 +952,8 @@ fm_pending_reply_recovery_message() {  # <record-path>
 fm_pending_reply_send_recovery() {  # <state-dir> <corr_id>
   local state=$1 corr=$2
   local rec phase completed delivered attempted grace now age task_id msg parent_home send_status=0
-  local sender_pid sender_identity
+  local sender_pid sender_identity status_file lock
+  local STATE FM_WAKE_QUEUE FM_WAKE_QUEUE_LOCK
   rec=$(fm_pending_reply_path "$state" "$corr")
   [ -f "$rec" ] || return 1
   phase=$(fm_pending_reply_get "$rec" phase)
@@ -954,19 +970,47 @@ fm_pending_reply_send_recovery() {  # <state-dir> <corr_id>
   grace=$(fm_pending_reply_get "$rec" grace_secs)
   case "$grace" in ''|*[!0-9]*) grace=$(fm_pending_reply_grace_secs) ;; esac
   now=$(fm_pending_reply_now)
-  age=$((now - delivered))
+  # Grace runs from the request turn's completion, not from delivery: delivery
+  # only proves the request arrived, while the turn's completion is the
+  # earliest moment a correlated report could exist to race against.
+  age=$((now - completed))
   [ "$age" -ge "$grace" ] || return 1
   task_id=$(fm_pending_reply_get "$rec" task_id)
   # A remote mate's report may exist and simply not have been mirrored yet.
   fm_pending_reply_missing_report_is_evidence "$state" "$task_id" "$completed" || return 1
+  # config/wait-no-turns: a mate waiting on its own open decision or blocker
+  # is never poked. The recovery stays unattempted until the answer lands.
+  if [ -e "${FM_CONFIG_OVERRIDE:-${FM_HOME:-}/config}/wait-no-turns" ]; then
+    [ -z "$(status_own_open_decisions "$state/$task_id.status")" ] || return 1
+  fi
+  status_file=$(fm_pending_reply_get "$rec" parent_status)
   parent_home=$(fm_pending_reply_get "$rec" parent_home)
   msg=$(fm_pending_reply_recovery_message "$rec")
   sender_pid=${BASHPID:-$$}
   sender_identity=$(fm_pending_reply_pid_identity "$sender_pid") || return 1
-  fm_pending_reply_set "$rec" recovery_sender_pid "$sender_pid" || return 1
-  fm_pending_reply_set "$rec" recovery_sender_identity "$sender_identity" || return 1
-  fm_pending_reply_set "$rec" recovery_attempted_epoch "$now" || return 1
-  fm_pending_reply_set "$rec" phase recovery_sending || return 1
+  # One fresh, uncached read immediately before firing, under the same
+  # per-correlation lock that records the send: a correlated report resolved
+  # in between can then never be overwritten by the repost. Lock globals are
+  # local for the reason fm_pending_reply_try_resolve documents.
+  STATE=$state
+  lock="$state/.pending-reply-$corr.lock"
+  # Deliberately undirected: bin/fm-wake-lib.sh is expanded once at the
+  # fm_pending_reply_try_resolve site; each directed site would re-expand its
+  # whole transitive graph under ShellCheck's external-source traversal.
+  . "$_FM_PENDING_REPLY_LIB_DIR/fm-wake-lib.sh"
+  # The phase is re-read after the resolve attempt, whatever it returned: a
+  # resolve that failed on a later field write has still committed resolved.
+  fm_lock_acquire_wait "$lock" || return 1
+  if _fm_pending_reply_try_resolve_locked "$state" "$corr" "$status_file" \
+    || [ "$(fm_pending_reply_get "$rec" phase)" != awaiting_report ] \
+    || ! fm_pending_reply_set "$rec" recovery_sender_pid "$sender_pid" \
+    || ! fm_pending_reply_set "$rec" recovery_sender_identity "$sender_identity" \
+    || ! fm_pending_reply_set "$rec" recovery_attempted_epoch "$now" \
+    || ! fm_pending_reply_set "$rec" phase recovery_sending; then
+    fm_lock_release "$lock"
+    return 1
+  fi
+  fm_lock_release "$lock"
   if [ -n "${FM_PENDING_REPLY_SEND_HOOK:-}" ]; then
     # Hook receives: task_id message
     # shellcheck disable=SC2086
@@ -1145,7 +1189,9 @@ fm_pending_reply_close_escalation() {  # <state-dir> <corr_id>
   local STATE FM_WAKE_QUEUE FM_WAKE_QUEUE_LOCK
   STATE=$state
   lock="$state/.pending-reply-$corr.lock"
-  # shellcheck source=bin/fm-wake-lib.sh
+  # Deliberately undirected: bin/fm-wake-lib.sh is expanded once at the
+  # fm_pending_reply_try_resolve site; each directed site would re-expand its
+  # whole transitive graph under ShellCheck's external-source traversal.
   . "$_FM_PENDING_REPLY_LIB_DIR/fm-wake-lib.sh"
   fm_lock_acquire_wait "$lock" || return 1
   _fm_pending_reply_close_escalation_locked "$@" || rc=$?
@@ -1211,7 +1257,9 @@ fm_pending_reply_maybe_escalate() {  # <state-dir> <corr_id>
   local STATE FM_WAKE_QUEUE FM_WAKE_QUEUE_LOCK
   STATE=$state
   lock="$state/.pending-reply-$corr.lock"
-  # shellcheck source=bin/fm-wake-lib.sh
+  # Deliberately undirected: bin/fm-wake-lib.sh is expanded once at the
+  # fm_pending_reply_try_resolve site; each directed site would re-expand its
+  # whole transitive graph under ShellCheck's external-source traversal.
   . "$_FM_PENDING_REPLY_LIB_DIR/fm-wake-lib.sh"
   fm_lock_acquire_wait "$lock" || return 1
   _fm_pending_reply_maybe_escalate_locked "$@" || rc=$?
@@ -1222,7 +1270,7 @@ fm_pending_reply_maybe_escalate() {  # <state-dir> <corr_id>
 _fm_pending_reply_maybe_escalate_locked() {  # <state-dir> <corr_id>
   local state=$1 corr=$2
   local rec phase completed now payload parent_status line kind first display
-  local delivered task_id meta sm_home remote_host
+  local delivered task_id meta sm_home remote_host grace age
   rec=$(fm_pending_reply_path "$state" "$corr")
   [ -f "$rec" ] || return 1
   phase=$(fm_pending_reply_get "$rec" phase)
@@ -1235,6 +1283,13 @@ _fm_pending_reply_maybe_escalate_locked() {  # <state-dir> <corr_id>
     recovery_sent)
       completed=$(fm_pending_reply_get "$rec" recovery_turn_completed_epoch)
       [ -n "$completed" ] || return 1
+      # Grace runs from the recovery turn's completion, the same anchor the
+      # recovery repost itself uses (never from delivery or send time).
+      grace=$(fm_pending_reply_get "$rec" grace_secs)
+      case "$grace" in ''|*[!0-9]*) grace=$(fm_pending_reply_grace_secs) ;; esac
+      now=$(fm_pending_reply_now)
+      age=$((now - completed))
+      [ "$age" -ge "$grace" ] || return 1
       # Same reply-channel evidence rule the recovery repost obeys: a missing
       # correlated report is not a missed report until the mirror caught up.
       fm_pending_reply_missing_report_is_evidence "$state" \
@@ -1254,11 +1309,14 @@ _fm_pending_reply_maybe_escalate_locked() {  # <state-dir> <corr_id>
       fm_pending_reply_restatement_copy_same_basename "$state" "$corr" "$sm_home" || true
     fi
   fi
-  # Resolve wins if a late report arrived between completion and this call.
-  if _fm_pending_reply_try_resolve_locked "$state" "$corr"; then
+  parent_status=$(fm_pending_reply_get "$rec" parent_status)
+  # One fresh, uncached read immediately before firing: a correlated report can
+  # land in the instant between the last resolve attempt and this call.
+  if _fm_pending_reply_try_resolve_locked "$state" "$corr" "$parent_status"; then
     return 0
   fi
-  parent_status=$(fm_pending_reply_get "$rec" parent_status)
+  # A resolve that failed on a later field write has still committed resolved.
+  [ "$(fm_pending_reply_get "$rec" phase)" = "$phase" ] || return 1
   case "$phase" in
     delivery_unknown) kind=delivery-unknown ;;
     recovery_failed|recovery_unknown) kind='recovery-delivery' ;;
@@ -1366,7 +1424,10 @@ fm_pending_reply_restatement_copy_same_basename() {  # <state-dir> <corr_id> <se
   [ "$stranded" != "$parent_status" ] || return 1
   line=$(fm_pending_reply_find_resolve_line "$stranded" "$corr")
   [ -n "$line" ] || return 1
-  # shellcheck source=bin/fm-parent-channel-lib.sh
+  # Deliberately undirected: bin/fm-parent-channel-lib.sh is expanded once at
+  # the fm_pending_reply_detect_wrong_home site; each directed site would
+  # re-expand its whole transitive graph under ShellCheck's external-source
+  # traversal.
   . "$_FM_PENDING_REPLY_LIB_DIR/fm-parent-channel-lib.sh"
   fm_parent_channel_append_once "$parent_status" "$line"
 }
@@ -1487,50 +1548,109 @@ _fm_pending_reply_archive() {  # <state-dir> <record-path> <corr_id>
   return "$rc"
 }
 
+# Print, one per line, the records among <record-path>... that the tick has work
+# for, reading every record once in a single awk process instead of forking
+# per record. A resolved record needs work only while an escalation it opened
+# is still unclosed: for every other resolved record the tick's per-record path
+# (fm_pending_reply_close_escalation) is a no-op that still pays a lock and
+# several forks, and records are never pruned, so that cost grew with the store.
+# Every other record - any phase but resolved, no phase at all, or one awk
+# cannot read - is selected, so the per-record path still decides it. Values
+# follow fm_pending_reply_get: the last line for a key wins.
+_fm_pending_reply_select_needing_work() {  # <record-path>...
+  [ "$#" -gt 0 ] || return 0
+  printf '%s\n' "$@" | LC_ALL=C awk '
+    {
+      path = $0
+      phase = ""; escalated = ""; closed = ""
+      while ((rc = (getline line < path)) > 0) {
+        if (index(line, "phase=") == 1) phase = substr(line, 7)
+        else if (index(line, "escalated_epoch=") == 1) escalated = substr(line, 17)
+        else if (index(line, "escalation_closed_epoch=") == 1) closed = substr(line, 25)
+      }
+      close(path)
+      if (rc < 0 || phase != "resolved" || (escalated != "" && closed == "")) print path
+    }
+  '
+}
+
+# Print, one per line, the records among <record-path>... that are past
+# retention: resolved, with no escalation still open, and settled (resolved_epoch,
+# or created_epoch when that is absent) at least <retention-secs> before <now>.
+# Like the selection above it reads every record in one awk process, so a
+# retained record costs no lock and no fork. _fm_pending_reply_archive repeats
+# the settled checks under the per-correlation lock before it moves anything.
+_fm_pending_reply_select_archivable() {  # <now> <retention-secs> <record-path>...
+  local now=$1 retention=$2
+  shift 2
+  [ "$#" -gt 0 ] || return 0
+  printf '%s\n' "$@" | LC_ALL=C awk -v now="$now" -v retention="$retention" '
+    {
+      path = $0
+      phase = ""; escalated = ""; closed = ""; resolved = ""; created = ""
+      while ((rc = (getline line < path)) > 0) {
+        if (index(line, "phase=") == 1) phase = substr(line, 7)
+        else if (index(line, "escalated_epoch=") == 1) escalated = substr(line, 17)
+        else if (index(line, "escalation_closed_epoch=") == 1) closed = substr(line, 25)
+        else if (index(line, "resolved_epoch=") == 1) resolved = substr(line, 16)
+        else if (index(line, "created_epoch=") == 1) created = substr(line, 15)
+      }
+      close(path)
+      if (rc < 0 || phase != "resolved" || (escalated != "" && closed == "")) next
+      settled = (resolved != "") ? resolved : created
+      if (settled !~ /^[0-9]+$/) next
+      if (now - settled >= retention) print path
+    }
+  '
+}
+
 # Scan every pending record for this parent state. Safe to call every poll.
 # Never scrapes secondmate conversation; uses only parent status, backend busy
-# state, and optional secondmate-home wrong-home path checks.
+# state, and optional secondmate-home wrong-home path checks. Records are
+# selected in one pass first (_fm_pending_reply_select_needing_work), so a
+# settled record costs no lock and no fork, and the per-record path below runs,
+# unchanged, only for the records that selection returns.
 fm_pending_reply_tick() {  # <state-dir>
   local state=$1 dir rec corr task_id phase delivered meta backend target label busy sm_home harness remote_host
-  local observation observation_task found i now retention settled
-  local line escalated closed resolved_at created_at
-  local -a observation_tasks=() observation_values=()
+  local observation observation_task found i retention
+  local -a observation_tasks=() observation_values=() records=() selected=()
   dir=$(fm_pending_reply_dir "$state")
   [ -d "$dir" ] || return 0
-  now=$(fm_pending_reply_now)
-  retention=$(fm_pending_reply_retention_secs)
   for rec in "$dir"/*; do
     [ -f "$rec" ] || continue
     case "${rec##*/}" in
       .*) continue ;;
     esac
-    # One read of the record serves every field the resolved fast path needs,
-    # because resolved records are the bulk of the directory on a busy home.
-    # The last occurrence of a key wins, matching fm_pending_reply_get.
-    corr='' task_id='' phase='' escalated='' closed='' resolved_at='' created_at=''
-    while IFS= read -r line || [ -n "$line" ]; do
-      case "$line" in
-        corr_id=*) corr=${line#*=} ;;
-        task_id=*) task_id=${line#*=} ;;
-        phase=*) phase=${line#*=} ;;
-        escalated_epoch=*) escalated=${line#*=} ;;
-        escalation_closed_epoch=*) closed=${line#*=} ;;
-        resolved_epoch=*) resolved_at=${line#*=} ;;
-        created_epoch=*) created_at=${line#*=} ;;
-      esac
-    done < "$rec"
-    [ -n "$corr" ] || corr=${rec##*/}
+    case "$rec" in
+      # A newline would split this path in the selection's input, so such a
+      # record skips selection and always takes the per-record path.
+      *$'\n'*) selected+=("$rec") ;;
+      *) records+=("$rec") ;;
+    esac
+  done
+  while IFS= read -r rec; do
+    selected+=("$rec")
+  done < <(_fm_pending_reply_select_needing_work ${records[@]+"${records[@]}"})
+  # Retention runs on the same pre-work view of the store as the selection
+  # above, so a record this tick settles is archived by a later tick, never in
+  # the tick that settled it.
+  retention=$(fm_pending_reply_retention_secs)
+  if [ "$retention" -gt 0 ]; then
+    while IFS= read -r rec; do
+      corr=$(fm_pending_reply_get "$rec" corr_id)
+      [ -n "$corr" ] || corr=${rec##*/}
+      _fm_pending_reply_archive "$state" "$rec" "$corr" || true
+    done < <(_fm_pending_reply_select_archivable "$(fm_pending_reply_now)" "$retention" ${records[@]+"${records[@]}"})
+  fi
+  for rec in ${selected[@]+"${selected[@]}"}; do
+    corr=$(fm_pending_reply_get "$rec" corr_id)
+    [ -n "$corr" ] || corr=$(basename "$rec")
+    task_id=$(fm_pending_reply_get "$rec" task_id)
+    phase=$(fm_pending_reply_get "$rec" phase)
     if [ "$phase" = resolved ]; then
-      if [ -n "$escalated" ] && [ -z "$closed" ]; then
-        # The retry that makes the close converge after a transient write
-        # failure; every other resolved record is a no-op for the close.
-        fm_pending_reply_close_escalation "$state" "$corr" || true
-      else
-        settled=${resolved_at:-$created_at}
-        case "$settled" in ''|*[!0-9]*) continue ;; esac
-        [ "$retention" -gt 0 ] && [ $((now - settled)) -ge "$retention" ] || continue
-        _fm_pending_reply_archive "$state" "$rec" "$corr" || true
-      fi
+      # Cheap no-op unless an escalation for this record is still open; this is
+      # the retry that makes the close converge after a transient write failure.
+      fm_pending_reply_close_escalation "$state" "$corr" || true
       continue
     fi
     fm_pending_reply_reconcile_delivery "$state" "$corr" || true
