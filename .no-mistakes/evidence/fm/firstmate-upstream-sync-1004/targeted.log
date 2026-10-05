@@ -1,0 +1,28 @@
+== fm-fleet-usage
+rc=0
+ok - malformed registry and bad arguments refuse
+ok - month-only, stale, expired-refreshable, and no-window providers
+== fm-initiative
+rc=0
+ok - fleet snapshot --backlog-records parses only the named file
+ok - usage errors
+== fm-calm-pi-extension
+rc=0
+ok - the rendered-export-DOM guard renders in one pass, retries a bounded number of Chrome start-up failures, and reports the Chrome binary, Chrome version, Pi version, exit status, and Chrome diagnostic when every attempt fails
+ok - Pi calm native E2E replaces the stock working row with a moving, resize-clamped working ship that freezes and resumes across two working periods in one Pi session, clears on abort, keeps captain turns visible, hides exact operational user rows without changing persistence, restores stock rendering Calm-off, survives restart, and preserves export plus Ctrl+O behavior
+== fm-remote-job
+rc=0
+skip: legacy worker birth-environment recovery requires Linux /proc
+ALL TESTS PASSED
+== fm-remote-entrypoint
+rc=0
+ok - fm-remote-entrypoint.sh invoked via a PATH symlink resolves SCRIPT_DIR to the real bin/ directory
+ok - fm-remote-entrypoint.sh invoked directly still resolves SCRIPT_DIR correctly
+== fm-remote-job-orphan-reap
+rc=0
+ok - the reaper stops an abandoned worker's whole tree
+ok - the reaper is idempotent
+== fm-remote-backlog-handoff
+rc=0
+ok - unconfigured bootstrap has no remote handoff behavior
+ALL TESTS PASSED
