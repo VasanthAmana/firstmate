@@ -3156,6 +3156,16 @@ printf 'garbage that is not a session block\n' > "$SIL"
 silent_says no "an unreadable result fails closed and is announced"
 printf 'session:\n  file: /a.html\n  status: ended\n  ended_by: user\nfeedback[1]{text}:\n  prompts[0]{x}:\n' > "$SIL"
 silent_says no "indented payload text cannot forge an empty content block"
+printf 'session:\n  file: /a.html\n  status: ended\n  ended_by: user\nnext_step: Stop polling.\n' > "$SIL"
+silent_says yes "the published empty close with its next step is still a no-op"
+printf 'session:\n  file: /a.html\n  status: ended\n  ended_by: user\nannotations[1]{tag,text}:\n  "choice","late answer"\n' > "$SIL"
+silent_says no "an unrecognized payload beside an ended session still wakes"
+printf 'session:\n  file: /a.html\n  status: ended\n  ended_by: user\nprompts[1]:\n  - tag: choice\n    text: late answer\n' > "$SIL"
+silent_says no "a list-form content block beside an ended session still wakes"
+printf 'session:\n  file: /a.html\n  status: browser_disconnected\nprompts[1]{tag,text}:\n  "choice","late answer"\n' > "$SIL"
+silent_says no "a content block beside a browser disconnect still wakes"
+printf 'session:\n  file: /a.html\n  status: browser_disconnected\nwhat is this\n' > "$SIL"
+silent_says no "an unreadable line beside a browser disconnect still wakes"
 # A content check that cannot complete is not proof that nothing was said. Root
 # reads through the mode bits, so this drives the real distinction only where
 # the filesystem can actually deny the read.
@@ -3419,6 +3429,85 @@ assert_contains "$out" "SESSION-ENDING MESSAGE: (none)" \
   "an empty board close invented a session-ending message"
 assert_contains "$out" "ANNOTATIONS: (none)" "an empty board close invented annotations"
 pass "read distinguishes a feedback capture from an ended-with-nothing close"
+
+# Two board capture shapes that once lost a captain answer. In the tabular one
+# the captain selected an option AND typed a multi-line instruction into the
+# card's note; both readers kept the selection and silently dropped the
+# instruction. In the list one Lavish framed three items in TOON's list form,
+# because one carried a nested text-range target, and both readers declared
+# the round empty.
+CAPTURES="$ROOT/tests/captures/lavish-board-answers"
+out=$("$ROOT/bin/fm-procevent-lavish.sh" read "$CAPTURES/tabular-choice-note.result") \
+  || fail "read failed on the tabular choice-with-note capture"
+assert_contains "$out" $'selection:\n| W1.begin' "read lost the captain's selection"
+assert_contains "$out" $'note:\n| note: Run step one on the first host, in the same session that prepared it.\n| Send every chart task to the second host' \
+  "read dropped the instruction the captain typed beside the selection"
+assert_contains "$out" "| Both hosts can run several tasks in parallel, so use that | W1: begin wave A as drawn" \
+  "read dropped the end of the captain's note"
+assert_contains "$out" "complete: yes" "a fully read capture was not marked complete"
+out=$("$ROOT/bin/fm-procevent-lavish.sh" answers "$CAPTURES/tabular-choice-note.result") \
+  || fail "answers failed on the tabular choice-with-note capture"
+[ "$out" = "$(printf 'sample-wave-call\tW1.begin\tsample-wave-call: W1.begin\trelease\tnote: Run step one on the first host, in the same session that prepared it. Send every chart task to the second host, it has to be visually verified.  All scheduling and routing tasks to the first host Spread the remaining tasks across the other hosts Both hosts can run several tasks in parallel, so use that | W1: begin wave A as drawn')" ] \
+  || fail "answers did not carry the captain's note beside the selection: $out"
+pass "a note typed beside a selection reaches both readers"
+
+out=$("$ROOT/bin/fm-procevent-lavish.sh" read "$CAPTURES/list-form-compound.result") \
+  || fail "read failed on the list-form capture"
+assert_contains "$out" "declared_items: 3" "read missed the list-form content block"
+assert_contains "$out" "presented_items: 3" "read did not present every list-form item"
+assert_contains "$out" "complete: yes" "a fully read list-form capture was not marked complete"
+assert_contains "$out" $'selection:\n| F1.oneside-L1.both' "read lost the compound selection"
+assert_contains "$out" "| F1: one-side enforcement is enough for now; L1: resolved for the picture, pinned for matching" \
+  "read lost the compound selection's note"
+assert_contains "$out" $'prompt:\n| Is the limit configurable?' "read dropped a typed comment from a list-form item"
+assert_contains "$out" "| only the owner that opened an entry can close it and the one that closed it can reopen it." \
+  "read dropped a typed comment on a text-range annotation"
+assert_contains "$out" "element_selector: form#card-form" "a list-form item lost its element identity"
+out=$("$ROOT/bin/fm-procevent-lavish.sh" answers "$CAPTURES/list-form-compound.result") \
+  || fail "answers failed on the list-form capture"
+[ "$out" = "$(printf 'sample-wave-call\tF1.oneside-L1.both\tsample-wave-call: F1.oneside-L1.both\trelease\tF1: one-side enforcement is enough for now; L1: resolved for the picture, pinned for matching')" ] \
+  || fail "answers did not read the compound selection from a list-form capture: $out"
+SIL="$CAPTURES/list-form-compound.result" silent_says no "a list-form captain answer is news"
+pass "a list-form capture is read in full instead of as an empty round"
+
+# A capture the reader cannot parse is a different finding from an empty round:
+# it is never complete, it says so before anything else, and it exits nonzero.
+unparseable_read() {  # <description>
+  local rc=0
+  out=$(read_out) || rc=$?
+  [ "$rc" -eq 3 ] || fail "read exited $rc instead of 3 on $1"
+  assert_contains "$out" "UNPARSEABLE CAPTURE" "read did not flag $1"
+  assert_contains "$out" "complete: no" "read certified $1 as complete"
+  [ "$(printf '%s\n' "$out" | head -1 | cut -c1-19)" = "UNPARSEABLE CAPTURE" ] \
+    || fail "the unparseable verdict did not lead the presentation of $1"
+}
+printf 'session:\n  file: /a.html\n  status: feedback\nprompts[many]{tag,text}:\n  "choice","late answer"\n' > "$READ"
+unparseable_read "a malformed content header"
+printf 'session:\n  file: /a.html\n  status: feedback\nprompts[2]: one,two\n' > "$READ"
+unparseable_read "an inline content array"
+printf 'session:\n  file: /a.html\n  status: feedback\nannotations[1]{tag,text}:\n  "choice","late answer"\n' > "$READ"
+unparseable_read "an unrecognized top-level field"
+assert_contains "$out" "unparsed: an unrecognized top-level field annotations" \
+  "read did not name the field it could not understand"
+printf 'session:\n  file: /a.html\n  status: feedback\nprompts[1]{tag,text}:\n  "choice","one"\n  "choice","two"\n' > "$READ"
+unparseable_read "rows beyond the declared count"
+printf 'garbage that is not a session block\n' > "$READ"
+unparseable_read "a capture with no session block"
+: > "$READ"
+unparseable_read "an empty capture"
+set +e
+"$ROOT/bin/fm-procevent-lavish.sh" answers "$READ" >/dev/null 2>&1
+rc=$?
+set -e
+[ "$rc" -eq 3 ] || fail "answers exited $rc on an unparseable capture instead of reporting it"
+printf 'session:\n  file: /a.html\n  status: feedback\nprompts[2]:\n  - tag: choice\n    text: "first"\n  oops\n' > "$READ"
+out=$(read_out) || true
+assert_contains "$out" "complete: no" "a list-form capture with an unreadable line was certified complete"
+printf 'session:\n  file: /review.html\n  status: ended\n  ended_by: user\nnext_step: Stop polling.\n' > "$READ"
+out=$(read_out) || fail "read failed on an empty board close"
+assert_not_contains "$out" "UNPARSEABLE" "an empty board close was reported unparseable"
+assert_contains "$out" "complete: yes" "an empty board close was not complete"
+pass "read reports an unparseable capture differently from an empty round"
 
 # The runner's silence seam is generic and closed by default: an adapter with no
 # `silent` command must keep announcing, so adding the seam changed nothing for

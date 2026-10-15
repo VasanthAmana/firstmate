@@ -1,0 +1,40 @@
+session:
+  file: /home/sample/boards/sample-wave-call/board.html
+  status: feedback
+prompts[3]:
+  - uid: "1"
+    prompt: only the owner that opened an entry can close it and the one that closed it can reopen it.
+    selector: "div > table > tbody > tr:nth-of-type(1) > td:nth-of-type(1)"
+    tag: text
+    text: "Only an OPEN entry, only its own owner"
+    target:
+      type: text-range
+      text: "Only an OPEN entry, only its own owner"
+      selector: "div > table > tbody > tr:nth-of-type(1) > td:nth-of-type(1)"
+      commonAncestorSelector: "div > table > tbody > tr:nth-of-type(1) > td:nth-of-type(1)"
+      start:
+        selector: "div > table > tbody > tr:nth-of-type(1) > td:nth-of-type(1)"
+        path[1]: 0
+        offset: 0
+      end:
+        selector: "div > table > tbody > tr:nth-of-type(1) > td:nth-of-type(1)"
+        path[1]: 2
+        offset: 28
+  - uid: "3"
+    prompt: Is the limit configurable?
+    selector: "div > table > tbody > tr:nth-of-type(3) > td:nth-of-type(1)"
+    tag: td
+    text: "The review line, 500 units of value"
+    target:
+      type: table-cell
+      selector: "div > table > tbody > tr:nth-of-type(3) > td:nth-of-type(1)"
+      rowLabel: "The review line, 500 units of value"
+      columnLabel: LIMIT
+      text: "The review line, 500 units of value"
+  - uid: "6"
+    prompt: "sample-wave-call decisions - F1: one-side enforcement is enough for now; L1: resolved for the picture, pinned for matching\n\nContext data:\n{\n  \"schema\": \"fm-bearings-answer.v1\",\n  \"question\": \"sample-wave-call\",\n  \"selection\": \"F1.oneside-L1.both\",\n  \"note\": \"F1: one-side enforcement is enough for now; L1: resolved for the picture, pinned for matching\",\n  \"close\": \"release\"\n}"
+    selector: form#card-form
+    tag: choice
+    text: "sample-wave-call: F1.oneside-L1.both"
+next_step: "Apply the requested changes to /home/sample/boards/sample-wave-call/board.html. Do not respond to the user just yet."
+dom_snapshot: "uid=4 body \"Sample wave plan\"\n  uid=7 main \"Sample wave plan\""
