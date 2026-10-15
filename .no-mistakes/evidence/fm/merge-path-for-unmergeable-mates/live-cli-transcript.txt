@@ -1,0 +1,36 @@
+== S1 parent's own guarded path (the reported hole)
+$ FM_HOME=<parent-lab> bin/fm-pr-merge.sh task-x1 https://github.com/kunchenguid/firstmate-nonexistent-lab/pull/71
+error: task metadata is unavailable
+exit=1
+
+== S2 routed through owning home (forge has no such PR, so the owning home's guards refuse)
+$ FM_HOME=<parent-lab> bin/fm-pr-merge.sh --secondmate mate-x task-x1 https://github.com/kunchenguid/firstmate-nonexistent-lab/pull/71
+error: secondmate mate-x's registered home is unusable: not a firstmate home (missing bin/); nothing was merged
+exit=1
+
+   parent has task-x1 record? no
+== S3 unregistered secondmate
+$ FM_HOME=<parent-lab> bin/fm-pr-merge.sh --secondmate mate-y task-x1 https://github.com/kunchenguid/firstmate-nonexistent-lab/pull/71
+error: no registered secondmate mate-y with a single well-formed record in this home's registry; nothing was merged
+exit=1
+
+== S4 invalid id
+$ FM_HOME=<parent-lab> bin/fm-pr-merge.sh --secondmate ../evil task-x1 https://github.com/kunchenguid/firstmate-nonexistent-lab/pull/71
+error: invalid secondmate id: ../evil
+exit=2
+
+== S5 home marker mismatch
+$ FM_HOME=<parent-lab> bin/fm-pr-merge.sh --secondmate mate-x task-x1 https://github.com/kunchenguid/firstmate-nonexistent-lab/pull/71
+error: secondmate mate-x's registered home is unusable: marked for secondmate mate-z, expected mate-x; nothing was merged
+exit=1
+
+== S6 supervision branch actor
+$ FM_HOME=<parent-lab> bin/fm-pr-merge.sh --secondmate mate-x task-x1 https://github.com/kunchenguid/firstmate-nonexistent-lab/pull/71
+error: PR merge (fm-pr-merge --secondmate) refused - the supervision branch never performs this action; report the outcome and leave it to main (role partition: docs/pi-supervision-branch.md)
+exit=6
+
+== S7 parent away (afk) record
+$ FM_HOME=<parent-lab> bin/fm-pr-merge.sh --secondmate mate-x task-x1 https://github.com/kunchenguid/firstmate-nonexistent-lab/pull/71
+error: a secondmate's PR merge is refused while this home's away record exists: the secondmate's home cannot see that record and would merge as attended; nothing was merged
+exit=1
+

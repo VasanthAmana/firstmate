@@ -1,0 +1,12 @@
+== S2b routed through a properly seeded owning home (no such PR on the forge)
+$ FM_HOME=<parent-lab> bin/fm-pr-merge.sh --secondmate mate-x task-x1 https://github.com/kunchenguid/firstmate-nonexistent-lab/pull/71
++ exec env FM_ROOT_OVERRIDE=/Users/amana/.no-mistakes/worktrees/07342c3c4479/01M4Z42R67DGBMSAGY2RHJCG29 FM_HOME=/private/var/folders/qh/9g4nkxyd4_b41v4nz0qpt8b40000gn/T/fm-lab.0peTdP FM_STATE_OVERRIDE=/private/var/folders/qh/9g4nkxyd4_b41v4nz0qpt8b40000gn/T/fm-lab.0peTdP/state FM_DATA_OVERRIDE=/private/var/folders/qh/9g4nkxyd4_b41v4nz0qpt8b40000gn/T/fm-lab.0peTdP/data FM_CONFIG_OVERRIDE=/private/var/folders/qh/9g4nkxyd4_b41v4nz0qpt8b40000gn/T/fm-lab.0peTdP/config /Users/amana/.no-mistakes/worktrees/07342c3c4479/01M4Z42R67DGBMSAGY2RHJCG29/bin/fm-pr-merge.sh task-x1 https://github.com/kunchenguid/firstmate-nonexistent-lab/pull/71
+error: named head 98fe775b09b49fb290efc476b1954ea78443e0f6 is unreachable outside the worker copy
+exit=1
+--- second run, plain output:
+WARNING: watcher still down (same stale episode; last beat: never, grace 300s) - full banner already printed this episode.
+error: named head 98fe775b09b49fb290efc476b1954ea78443e0f6 is unreachable outside the worker copy
+exit=1
+parent task-x1 record: none
+mate state files: task-x1.meta 
+parent mate-x.status: none
