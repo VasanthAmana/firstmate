@@ -135,7 +135,21 @@
 # explicit captain instruction and never skips the live green check, the
 # away-record read, or a captain hold.
 #
-# Usage: fm-pr-merge.sh <task-id> <pr-url> [--attended-override] [--allow-red <check-name>] [--allow-missing <check-name>] [-- <extra forge merge args>]
+# Usage: fm-pr-merge.sh [--secondmate <secondmate-id>] <task-id> <pr-url> [--attended-override] [--allow-red <check-name>] [--allow-missing <check-name>] [-- <extra forge merge args>]
+#
+# A task a secondmate spawned has its record only in that secondmate's home, so
+# this home refuses it as task metadata unavailable. --secondmate, given first,
+# merges it in the home that owns the record instead: this same script runs
+# there with the remaining arguments, for a local secondmate against its
+# registered home and for a remote one on its host through bin/fm-on.sh, so
+# every guard above, that home's captain holds, its recorded outcome, and its
+# upward report all apply there unchanged. The secondmate must have exactly one
+# record in this home's data/secondmates.md, and a local home must pass the
+# shared seeded-home checks. That home cannot see this home's away record or
+# supervision actor, so the routed merge is attended and main-only: it is
+# refused for the supervision branch and while this home's away record exists.
+# A remote transport failure (exit 255) is reported as an unknown outcome to
+# reconcile against the forge, never retried here.
 #
 # On GitLab, this script confirms the MR is actually merged before reporting it;
 # an auto-merge-queued or unconfirmed request leaves the poll armed and records
@@ -160,6 +174,60 @@ STATE="${FM_STATE_OVERRIDE:-$FM_HOME/state}"
 . "$SCRIPT_DIR/fm-merge-authority-lib.sh"
 # shellcheck source=bin/fm-afk-contract.sh
 . "$SCRIPT_DIR/fm-afk-contract.sh"
+
+# A secondmate's child task has its record only in that secondmate's home, so
+# its PR is merged there by this same script, with every guard above applied by
+# the home that owns the task (see the --secondmate paragraph in the header).
+if [ "${1:-}" = --secondmate ]; then
+  if [ "$#" -lt 4 ]; then
+    echo "error: invalid PR merge request" >&2
+    exit 2
+  fi
+  SECONDMATE_ID=$2
+  shift 2
+  case "$SECONDMATE_ID" in
+    ''|-*|*[!A-Za-z0-9._-]*) echo "error: invalid secondmate id: $SECONDMATE_ID" >&2; exit 2 ;;
+  esac
+  if ! fm_pr_task_id_valid "$1" || ! fm_pr_url_parse "$2"; then
+    echo "error: invalid PR merge request" >&2
+    exit 2
+  fi
+  # shellcheck source=bin/fm-wake-lib.sh
+  . "$SCRIPT_DIR/fm-wake-lib.sh"
+  # shellcheck source=bin/fm-lease-lib.sh
+  . "$SCRIPT_DIR/fm-lease-lib.sh"
+  fm_lease_forbid_branch "PR merge (fm-pr-merge --secondmate)"
+  if fm_afk_contract_present "$STATE" && [ "$(fm_afk_contract_mode "$STATE" 2>/dev/null || true)" != quiet ]; then
+    echo "error: a secondmate's PR merge is refused while this home's away record exists: the secondmate's home cannot see that record and would merge as attended; nothing was merged" >&2
+    exit 1
+  fi
+  # shellcheck source=bin/fm-ff-lib.sh
+  . "$SCRIPT_DIR/fm-ff-lib.sh"
+  if ! secondmate_registry_line_for_id "${FM_DATA_OVERRIDE:-$FM_HOME/data}/secondmates.md" "$SECONDMATE_ID"; then
+    echo "error: no registered secondmate $SECONDMATE_ID with a single well-formed record in this home's registry; nothing was merged" >&2
+    exit 1
+  fi
+  if [ "$SECONDMATE_REGISTRY_REMOTE" -eq 1 ]; then
+    SECONDMATE_RC=0
+    "$SCRIPT_DIR/fm-on.sh" "$SECONDMATE_ID" fm-pr-merge.sh "$@" || SECONDMATE_RC=$?
+    if [ "$SECONDMATE_RC" -eq 255 ]; then
+      echo "error: the merge outcome is unknown: the connection to secondmate $SECONDMATE_ID's host ended before its result came back; read the PR's state before retrying" >&2
+    fi
+    exit "$SECONDMATE_RC"
+  fi
+  if ! validate_secondmate_home "$SECONDMATE_ID" "$SECONDMATE_REGISTRY_HOME"; then
+    echo "error: secondmate $SECONDMATE_ID's registered home is unusable: $VALIDATION_ERROR; nothing was merged" >&2
+    exit 1
+  fi
+  # Every override is restated so none of this home's state leaks into the run.
+  exec env \
+    FM_ROOT_OVERRIDE="$FM_ROOT" \
+    FM_HOME="$VALIDATED_HOME" \
+    FM_STATE_OVERRIDE="$VALIDATED_HOME/state" \
+    FM_DATA_OVERRIDE="$VALIDATED_HOME/data" \
+    FM_CONFIG_OVERRIDE="$VALIDATED_HOME/config" \
+    "$SCRIPT_DIR/fm-pr-merge.sh" "$@"
+fi
 
 if [ "$#" -lt 2 ]; then
   echo "error: invalid PR merge request" >&2
@@ -387,6 +455,9 @@ fm_lease_forbid_branch "PR merge (fm-pr-merge)" --away-relocated
 
 if [ ! -f "$META" ] || [ -L "$META" ]; then
   echo "error: task metadata is unavailable" >&2
+  if grep -q '^- ' "${FM_DATA_OVERRIDE:-$FM_HOME/data}/secondmates.md" 2>/dev/null; then
+    echo "if a secondmate's task opened this PR, its record is in that secondmate's home: merge it there with bin/fm-pr-merge.sh --secondmate <secondmate-id> $ID $URL" >&2
+  fi
   exit 1
 fi
 if ! fm_backlog_meta_spawn_gen_optional "$META" "$STATE"; then
