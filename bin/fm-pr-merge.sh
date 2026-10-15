@@ -197,7 +197,7 @@ if [ "${1:-}" = --secondmate ]; then
   # shellcheck source=bin/fm-lease-lib.sh
   . "$SCRIPT_DIR/fm-lease-lib.sh"
   fm_lease_forbid_branch "PR merge (fm-pr-merge --secondmate)"
-  if fm_afk_contract_present "$STATE" && [ "$(fm_afk_contract_mode "$STATE" 2>/dev/null || true)" != quiet ]; then
+  if fm_afk_contract_away_present "$STATE"; then
     echo "error: a secondmate's PR merge is refused while this home's away record exists: the secondmate's home cannot see that record and would merge as attended; nothing was merged" >&2
     exit 1
   fi
@@ -455,9 +455,6 @@ fm_lease_forbid_branch "PR merge (fm-pr-merge)" --away-relocated
 
 if [ ! -f "$META" ] || [ -L "$META" ]; then
   echo "error: task metadata is unavailable" >&2
-  if grep -q '^- ' "${FM_DATA_OVERRIDE:-$FM_HOME/data}/secondmates.md" 2>/dev/null; then
-    echo "if a secondmate's task opened this PR, its record is in that secondmate's home: merge it there with bin/fm-pr-merge.sh --secondmate <secondmate-id> $ID $URL" >&2
-  fi
   exit 1
 fi
 if ! fm_backlog_meta_spawn_gen_optional "$META" "$STATE"; then

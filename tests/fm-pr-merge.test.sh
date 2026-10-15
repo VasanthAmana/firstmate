@@ -2400,8 +2400,6 @@ test_parent_merges_a_secondmate_child_pr_through_the_owning_home() {
   expect_code 1 "$rc" "parent-merges-child: the parent's own record lookup should still refuse"
   assert_grep 'task metadata is unavailable' "$case_dir/stderr0" \
     "parent-merges-child: the bare refusal changed"
-  assert_grep "fm-pr-merge.sh --secondmate <secondmate-id> task-x1 $url" "$case_dir/stderr0" \
-    "parent-merges-child: the refusal did not name the owning-home merge path"
   [ ! -s "$case_dir/gh.log" ] || fail "parent-merges-child: the refused merge read the forge"
 
   set +e
