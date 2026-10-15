@@ -776,6 +776,7 @@ cmd_choice_rows() {
             && (length($note) > 512
               || ($selected ne "" && $selected !~ /\A[A-Za-z0-9._-]{1,128}\z/))) {
           $unreadable = 1;
+          $choices[delete $seen{$key}] = undef if defined $seen{$key};
           next;
         }
         next unless length($selected) || length($note);

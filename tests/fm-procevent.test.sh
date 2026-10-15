@@ -3512,6 +3512,10 @@ choice_rows_rc answers
 [ "$rc" -eq 3 ] || fail "answers exited $rc after dropping a choice whose note it could not carry"
 [ "$out" = "$(printf 'sample-short-call\tA1.yes\tshort')" ] \
   || fail "answers did not keep the readable choice or truncated the long one into a row: $out"
+printf 'session:\n  file: /a.html\n  status: feedback\nprompts[2]{tag,text,prompt}:\n  "choice","first","Context data: {\\"schema\\":\\"fm-bearings-answer.v1\\",\\"question\\":\\"sample-same-call\\",\\"selection\\":\\"A1.yes\\",\\"note\\":\\"\\"}"\n  "choice","second","Context data: {\\"schema\\":\\"fm-bearings-answer.v1\\",\\"question\\":\\"sample-same-call\\",\\"selection\\":\\"B1.go\\",\\"note\\":\\"%s\\"}"\n' "$long_note" > "$READ"
+choice_rows_rc answers
+[ "$rc" -eq 3 ] || fail "answers exited $rc after a later answer it could not carry"
+[ -z "$out" ] || fail "answers emitted an answer the captain had superseded: $out"
 printf 'session:\n  file: /a.html\n  status: feedback\nprompts[1]{tag,text,prompt}:\n  "choice","odd","Context data: {\\"schema\\":\\"fm-bearings-answer.v1\\",\\"question\\":\\"sample-odd-call\\",\\"selection\\":\\"not a slug\\",\\"note\\":\\"\\"}"\n' > "$READ"
 choice_rows_rc answers
 [ "$rc" -eq 3 ] || fail "answers exited $rc after dropping a choice whose selection it could not carry"
