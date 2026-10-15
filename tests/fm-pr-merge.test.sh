@@ -454,7 +454,7 @@ run_pr_merge() {
   local case_dir=$1 rc; shift
   FM_ROOT_OVERRIDE="$ROOT" \
   FM_HOME="${FM_TEST_HOME:-$case_dir/home}" \
-  FM_STATE_OVERRIDE="$case_dir/state" \
+  FM_STATE_OVERRIDE="${FM_TEST_STATE:-$case_dir/state}" \
   FM_TEST_GH_AXI_LOG="$case_dir/gh-axi.log" \
   FM_TEST_GH_LOG="$case_dir/gh.log" \
   FM_TEST_GH_OUTCOME="$case_dir/github-outcome" \
@@ -2358,6 +2358,197 @@ test_secondmate_without_parent_binding_is_loud() {
   pass "a secondmate home that cannot report upward says so instead of merging in silence"
 }
 
+# A parent home holds no record of a task its second mate spawned, so the
+# child's pull request can only be merged through the home that owns that
+# record. make_parent_case <name>: the make_case fixture re-homed as a local
+# secondmate home mate-x (bound to a parent at "$case_dir/parent") that owns
+# task-x1, plus a parent home that registers mate-x and has no task-x1 record.
+make_parent_case() {
+  local name=$1 case_dir mate parent
+  case_dir=$(make_case "$name")
+  mate="$case_dir/home"
+  parent="$case_dir/parent"
+  mkdir -p "$mate/state" "$mate/bin" "$parent/data" "$parent/state" "$parent/config"
+  : >"$mate/AGENTS.md"
+  cp "$case_dir/state/task-x1.meta" "$mate/state/task-x1.meta"
+  rm -f "$case_dir/state/task-x1.meta"
+  printf '%s\n' mate-x >"$mate/.fm-secondmate-home"
+  printf 'schema=fm-secondmate-parent.v1\nroute=local\nparent_home=%s\n' "$parent" >"$mate/.fm-secondmate-parent"
+  printf -- '- mate-x - Owns the gateway (home: %s; scope: gateway work; projects: alpha; added 2026-09-22)\n' \
+    "$mate" >"$parent/data/secondmates.md"
+  printf '%s\n' "$case_dir"
+}
+
+run_parent_merge() {
+  local case_dir=$1; shift
+  FM_TEST_HOME="$case_dir/parent" FM_TEST_STATE="$case_dir/parent/state" run_pr_merge "$case_dir" "$@"
+}
+
+test_parent_merges_a_secondmate_child_pr_through_the_owning_home() {
+  local case_dir rc url
+  url=https://github.com/example/repo/pull/71
+  case_dir=$(make_parent_case parent-merges-child)
+  add_gh_mocks "$case_dir" 7171717171717171717171717171717171717171
+  : >"$case_dir/gh-axi.log"
+
+  # The reported hole: the parent's own guarded path has no record of the
+  # child, so a green in-scope pull request could only be merged by hand.
+  set +e
+  run_parent_merge "$case_dir" task-x1 "$url" >"$case_dir/stdout0" 2>"$case_dir/stderr0"
+  rc=$?
+  set -e
+  expect_code 1 "$rc" "parent-merges-child: the parent's own record lookup should still refuse"
+  assert_grep 'task metadata is unavailable' "$case_dir/stderr0" \
+    "parent-merges-child: the bare refusal changed"
+  [ ! -s "$case_dir/gh.log" ] || fail "parent-merges-child: the refused merge read the forge"
+
+  set +e
+  run_parent_merge "$case_dir" --secondmate mate-x task-x1 "$url" \
+    >"$case_dir/stdout" 2>"$case_dir/stderr"
+  rc=$?
+  set -e
+
+  expect_code 0 "$rc" "parent-merges-child: the owning home's guarded merge should succeed: $(cat "$case_dir/stderr")"
+  assert_logged_gh_merge "$case_dir" 71 example/repo --squash
+  assert_grep "pr=$url" "$case_dir/home/state/task-x1.meta" \
+    "parent-merges-child: the merge was not recorded on the owning home's task"
+  assert_absent "$case_dir/parent/state/task-x1.meta" \
+    "parent-merges-child: the parent invented a record for a task it does not own"
+  assert_absent "$case_dir/parent/state/task-x1.check.sh" \
+    "parent-merges-child: the parent armed a merge watch for a task it does not own"
+  assert_grep "done [key=merged-task-x1]: merged task-x1 $url" \
+    <(sed -E 's/ \[at=[0-9]+\]//' "$case_dir/parent/state/mate-x.status") \
+    "parent-merges-child: the landed merge did not come back on the secondmate's channel"
+  pass "a parent merges a secondmate child's PR through the owning home's own guarded path"
+}
+
+test_secondmate_merge_keeps_the_owning_home_guards() {
+  local case_dir rc url
+  url=https://github.com/example/repo/pull/72
+  case_dir=$(make_parent_case secondmate-merge-red)
+  add_gh_mocks "$case_dir" 7272727272727272727272727272727272727272
+  write_github_red_json "$case_dir" 7272727272727272727272727272727272727272 ci
+  : >"$case_dir/gh-axi.log"
+
+  set +e
+  run_parent_merge "$case_dir" --secondmate mate-x task-x1 "$url" \
+    >"$case_dir/stdout" 2>"$case_dir/stderr"
+  rc=$?
+  set -e
+
+  expect_code 1 "$rc" "secondmate-merge-red: a red child PR should be refused"
+  assert_no_grep 'pr merge' "$case_dir/gh.log" "secondmate-merge-red: a red child PR was merged"
+  pass "a secondmate child's PR still meets every guard of the owning home's merge"
+}
+
+test_secondmate_merge_refuses_what_the_parent_cannot_route() {
+  local case_dir rc url
+  url=https://github.com/example/repo/pull/73
+  case_dir=$(make_parent_case secondmate-merge-unroutable)
+  add_gh_mocks "$case_dir" 7373737373737373737373737373737373737373
+  : >"$case_dir/gh-axi.log"
+
+  set +e
+  run_parent_merge "$case_dir" --secondmate mate-y task-x1 "$url" \
+    >"$case_dir/stdout" 2>"$case_dir/stderr"
+  rc=$?
+  set -e
+  expect_code 1 "$rc" "secondmate-merge-unroutable: an unregistered secondmate should be refused"
+  assert_grep 'no registered secondmate mate-y' "$case_dir/stderr" \
+    "secondmate-merge-unroutable: the refusal did not name the missing registration"
+
+  printf '%s\n' mate-z >"$case_dir/home/.fm-secondmate-home"
+  set +e
+  run_parent_merge "$case_dir" --secondmate mate-x task-x1 "$url" \
+    >"$case_dir/stdout" 2>"$case_dir/stderr"
+  rc=$?
+  set -e
+  expect_code 1 "$rc" "secondmate-merge-unroutable: a home marked for another secondmate should be refused"
+  assert_grep 'marked for secondmate mate-z' "$case_dir/stderr" \
+    "secondmate-merge-unroutable: the refusal did not name the home mismatch"
+  [ ! -s "$case_dir/gh.log" ] || fail "secondmate-merge-unroutable: an unroutable merge read the forge"
+  pass "a secondmate merge is refused unless the registry routes to that secondmate's own home"
+}
+
+# The owning home cannot see this home's away record or supervision actor, so
+# a merge routed there could not honor them: both are refused here instead.
+test_secondmate_merge_is_attended_main_only() {
+  local case_dir rc url
+  url=https://github.com/example/repo/pull/74
+  case_dir=$(make_parent_case secondmate-merge-attended)
+  add_gh_mocks "$case_dir" 7474747474747474747474747474747474747474
+  : >"$case_dir/gh-axi.log"
+
+  set +e
+  FM_SUPERVISION_ACTOR=branch run_parent_merge "$case_dir" --secondmate mate-x task-x1 "$url" \
+    >"$case_dir/stdout" 2>"$case_dir/stderr"
+  rc=$?
+  set -e
+  expect_code 6 "$rc" "secondmate-merge-attended: the supervision branch should be refused"
+
+  FM_HOME="$case_dir/parent" FM_STATE_OVERRIDE="$case_dir/parent/state" \
+    "$ROOT/bin/fm-afk-contract.sh" enter --words 'back at six' >/dev/null
+  set +e
+  run_parent_merge "$case_dir" --secondmate mate-x task-x1 "$url" \
+    >"$case_dir/stdout" 2>"$case_dir/stderr"
+  rc=$?
+  set -e
+  expect_code 1 "$rc" "secondmate-merge-attended: a merge under this home's away record should be refused"
+  assert_grep 'away' "$case_dir/stderr" "secondmate-merge-attended: the away refusal did not say why"
+  [ ! -s "$case_dir/gh.log" ] || fail "secondmate-merge-attended: a refused routed merge read the forge"
+  pass "a routed secondmate merge is attended and main-only, since the owning home cannot see this home's posture"
+}
+
+test_remote_secondmate_merge_runs_in_the_owning_home() {
+  local case_dir rc url
+  url=https://github.com/example/repo/pull/75
+  case_dir=$(make_parent_case remote-secondmate-merge)
+  printf -- '- mate-r - Owns the gateway (host: mate-host; root: /srv/fm; home: /srv/mate-home; scope: gateway work; projects: alpha; added 2026-09-22)\n' \
+    >"$case_dir/parent/data/secondmates.md"
+  cat >"$case_dir/fakebin/fake-ssh" <<'SH'
+#!/usr/bin/env bash
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    -o) shift 2 ;;
+    --) shift; break ;;
+    *) exit 90 ;;
+  esac
+done
+printf 'host=%s entry=%s\n' "$1" "$2" >"$FM_TEST_SSH_LOG"
+{ printf "%s" "$6" | base64 --decode 2>/dev/null || printf "%s" "$6" | base64 -D; } \
+  | tr '\0' '\n' >>"$FM_TEST_SSH_LOG"
+printf 'merged in the owning home\n'
+exit "${FM_TEST_SSH_RC:-0}"
+SH
+  chmod +x "$case_dir/fakebin/fake-ssh"
+
+  set +e
+  FM_SSH_BIN="$case_dir/fakebin/fake-ssh" FM_TEST_SSH_LOG="$case_dir/ssh.log" \
+    run_parent_merge "$case_dir" --secondmate mate-r task-x1 "$url" \
+    >"$case_dir/stdout" 2>"$case_dir/stderr"
+  rc=$?
+  set -e
+  expect_code 0 "$rc" "remote-secondmate-merge: the routed merge should succeed: $(cat "$case_dir/stderr")"
+  assert_grep 'host=mate-host entry=fm-remote-entrypoint.sh' "$case_dir/ssh.log" \
+    "remote-secondmate-merge: the merge did not reach the secondmate's host"
+  [ "$(sed -n '2,$p' "$case_dir/ssh.log")" = "$(printf '%s\n' fm-pr-merge.sh task-x1 "$url")" ] \
+    || fail "remote-secondmate-merge: the owning home ran something other than its own merge: $(cat "$case_dir/ssh.log")"
+  assert_grep 'merged in the owning home' "$case_dir/stdout" \
+    "remote-secondmate-merge: the owning home's output was not relayed"
+
+  set +e
+  FM_SSH_BIN="$case_dir/fakebin/fake-ssh" FM_TEST_SSH_LOG="$case_dir/ssh.log" FM_TEST_SSH_RC=255 \
+    run_parent_merge "$case_dir" --secondmate mate-r task-x1 "$url" \
+    >"$case_dir/stdout" 2>"$case_dir/stderr"
+  rc=$?
+  set -e
+  expect_code 255 "$rc" "remote-secondmate-merge: an unknown transport outcome should keep its exit"
+  assert_grep 'outcome is unknown' "$case_dir/stderr" \
+    "remote-secondmate-merge: an unknown transport outcome was not called unknown"
+  [ ! -s "$case_dir/gh.log" ] || fail "remote-secondmate-merge: the parent read the forge itself"
+  pass "a remote secondmate child's PR is merged by that home's own guarded path on its host"
+}
+
 test_github_zero_exit_queue_required_refuses_with_exact_retry
 test_github_closed_unqueued_outcome_omits_retry_flags
 test_github_agreeing_queue_rules_keep_retry_guidance
@@ -3844,6 +4035,11 @@ test_queued_github_merge_leaves_the_poll_armed
 test_distinct_merged_prs_keep_distinct_wakes
 test_uncommitted_marker_retry_is_never_silent
 test_secondmate_without_parent_binding_is_loud
+test_parent_merges_a_secondmate_child_pr_through_the_owning_home
+test_secondmate_merge_keeps_the_owning_home_guards
+test_secondmate_merge_refuses_what_the_parent_cannot_route
+test_secondmate_merge_is_attended_main_only
+test_remote_secondmate_merge_runs_in_the_owning_home
 test_absent_backlog_still_merges
 test_unreadable_backlog_refuses_the_merge
 test_unreadable_backend_config_refuses_the_merge
