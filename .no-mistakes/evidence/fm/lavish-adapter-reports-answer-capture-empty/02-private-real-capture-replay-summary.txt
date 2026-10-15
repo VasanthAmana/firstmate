@@ -1,0 +1,6 @@
+[base] capture#2-dropped-note: read_exit=0 declared_items: 1 presented_items: 1 complete: yes annotation_count: 1  note_fields=0 unparseable_banner=0 answers_exit=0 answer_rows=1 row_field_counts=4, answer_note_len=0, silent_exit=1
+[target] capture#2-dropped-note: read_exit=0 declared_items: 1 presented_items: 1 complete: yes annotation_count: 1  note_fields=1 unparseable_banner=0 answers_exit=0 answer_rows=1 row_field_counts=5, answer_note_len=399, silent_exit=1
+[base] capture#1-empty-capture: read_exit=0 declared_items: 0 presented_items: 0 complete: yes annotation_count: 0  note_fields=0 unparseable_banner=0 answers_exit=0 answer_rows=0 row_field_counts= answer_note_len= silent_exit=1
+[target] capture#1-empty-capture: read_exit=0 declared_items: 3 presented_items: 3 complete: yes annotation_count: 3  note_fields=1 unparseable_banner=0 answers_exit=0 answer_rows=1 row_field_counts=5, answer_note_len=102, silent_exit=1
+selection=W1.begin mode=release
+selection=F1.engineonly-L1.both mode=release

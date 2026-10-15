@@ -1,0 +1,129 @@
+=================== [base] read tabular-choice-note.result
+SESSION-ENDING MESSAGE: (none)
+
+declared_items: 1
+presented_items: 1
+malformed_items: 0
+complete: yes
+lifecycle: feedback
+session_ended: true
+annotation_count: 1
+session_ending_message_count: 0
+
+ANNOTATIONS
+ANNOTATION 1 of 1
+element_uid: 2
+element_selector: form#card-form-2
+tag: choice
+text:
+| sample-wave-call: W1.begin
+END ANNOTATIONS
+END LAVISH RESULT (1 of 1)
+(exit 0)
+=================== [base] answers tabular-choice-note.result   (tabs shown as ' ⇥ ')
+sample-wave-call ⇥ W1.begin ⇥ sample-wave-call: W1.begin ⇥ release
+(exit 0)
+=================== [target] read tabular-choice-note.result
+SESSION-ENDING MESSAGE: (none)
+
+declared_items: 1
+presented_items: 1
+malformed_items: 0
+complete: yes
+lifecycle: feedback
+session_ended: true
+annotation_count: 1
+session_ending_message_count: 0
+
+ANNOTATIONS
+ANNOTATION 1 of 1
+element_uid: 2
+element_selector: form#card-form-2
+tag: choice
+text:
+| sample-wave-call: W1.begin
+question:
+| sample-wave-call
+selection:
+| W1.begin
+note:
+| note: Run step one on the first host, in the same session that prepared it.
+| Send every chart task to the second host, it has to be visually verified. 
+| All scheduling and routing tasks to the first host
+| Spread the remaining tasks across the other hosts
+| Both hosts can run several tasks in parallel, so use that | W1: begin wave A as drawn
+close:
+| release
+END ANNOTATIONS
+END LAVISH RESULT (1 of 1)
+(exit 0)
+=================== [target] answers tabular-choice-note.result   (tabs shown as ' ⇥ ')
+sample-wave-call ⇥ W1.begin ⇥ sample-wave-call: W1.begin ⇥ release ⇥ note: Run step one on the first host, in the same session that prepared it. Send every chart task to the second host, it has to be visually verified.  All scheduling and routing tasks to the first host Spread the remaining tasks across the other hosts Both hosts can run several tasks in parallel, so use that | W1: begin wave A as drawn
+(exit 0)
+=================== [base] read list-form-compound.result
+SESSION-ENDING MESSAGE: (none)
+
+declared_items: 0
+presented_items: 0
+malformed_items: 0
+complete: yes
+lifecycle: feedback
+session_ended: (unset)
+annotation_count: 0
+session_ending_message_count: 0
+
+ANNOTATIONS: (none)
+END LAVISH RESULT (0 of 0)
+(exit 0)
+=================== [base] answers list-form-compound.result   (tabs shown as ' ⇥ ')
+
+(exit 0)
+=================== [target] read list-form-compound.result
+SESSION-ENDING MESSAGE: (none)
+
+declared_items: 3
+presented_items: 3
+malformed_items: 0
+complete: yes
+lifecycle: feedback
+session_ended: (unset)
+annotation_count: 3
+session_ending_message_count: 0
+
+ANNOTATIONS
+ANNOTATION 1 of 3
+element_uid: 1
+element_selector: div > table > tbody > tr:nth-of-type(1) > td:nth-of-type(1)
+tag: text
+text:
+| Only an OPEN entry, only its own owner
+prompt:
+| only the owner that opened an entry can close it and the one that closed it can reopen it.
+ANNOTATION 2 of 3
+element_uid: 3
+element_selector: div > table > tbody > tr:nth-of-type(3) > td:nth-of-type(1)
+tag: td
+text:
+| The review line, 500 units of value
+prompt:
+| Is the limit configurable?
+ANNOTATION 3 of 3
+element_uid: 6
+element_selector: form#card-form
+tag: choice
+text:
+| sample-wave-call: F1.oneside-L1.both
+question:
+| sample-wave-call
+selection:
+| F1.oneside-L1.both
+note:
+| F1: one-side enforcement is enough for now; L1: resolved for the picture, pinned for matching
+close:
+| release
+END ANNOTATIONS
+END LAVISH RESULT (3 of 3)
+(exit 0)
+=================== [target] answers list-form-compound.result   (tabs shown as ' ⇥ ')
+sample-wave-call ⇥ F1.oneside-L1.both ⇥ sample-wave-call: F1.oneside-L1.both ⇥ release ⇥ F1: one-side enforcement is enough for now; L1: resolved for the picture, pinned for matching
+(exit 0)

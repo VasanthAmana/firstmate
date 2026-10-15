@@ -1,0 +1,146 @@
+
+################ [base commit] end-to-end replay of tabular-choice-note.result
+$ tasks-axi add sample-wave-call ...; fm-captain-hold.sh hold sample-wave-call
+sample-wave-call
+$ fm-procevent.sh register lavish lavish-b0a4d0000000f1e3 -- board-source.sh   (source replays tabular-choice-note.result)
+registered: lavish-b0a4d0000000f1e3 (lavish)
+$ fm-captain-hold.sh bind lavish-b0a4d0000000f1e3
+bound: lavish-b0a4d0000000f1e3 -> (any)
+$ fm-procevent.sh start lavish-b0a4d0000000f1e3
+reconciles-fed: lavish-b0a4d0000000f1e3
+answers-fed: lavish-b0a4d0000000f1e3
+not-autohandled: lavish-b0a4d0000000f1e3 (left for the handler; still unacknowledged)
+retired: lavish-b0a4d0000000f1e3 (adapter classified the captured result terminal)
+captured: /private/var/folders/qh/9g4nkxyd4_b41v4nz0qpt8b40000gn/T/fm-lab.B8bEXC/state/procevent-inbox/lavish-b0a4d0000000f1e3.1.result
+(exit 0)
+--- wake queue:
+1792048932	1	check	procevent:lavish-b0a4d0000000f1e3:1	check: procevent lavish lavish-b0a4d0000000f1e3 1
+$ tasks-axi show sample-wave-call --full
+task:
+  id: sample-wave-call
+  title: Sample wave plan
+  state: queued
+  blocked: no
+  blocked_by: none
+  held: no
+  hold_reason: "-"
+  hold_kind: "-"
+  hold_until: "-"
+  kind: ship
+  repo: sample
+  priority: "-"
+  created: 2026-10-15
+  closed: "-"
+  deps: none
+  links: none
+  body: "Resolution recorded by fm-captain-hold.\nDecision digest: bf3be2d9efb7dfd3d08931e9a03fe089436ef69e1eac5e7edb655e1342efb262\nResolution mode: released\n\nCaptain decision:\nCaptain answered this call through the captured result lavish-b0a4d0000000f1e3 sequence 1.\nTask: sample-wave-call\nAnswer: W1.begin\nAnswer as shown to the captain: sample-wave-call: W1.begin\n\nWave plan."
+(lab home removed: /var/folders/qh/9g4nkxyd4_b41v4nz0qpt8b40000gn/T//fm-lab.B8bEXC)
+
+################ [target commit] end-to-end replay of tabular-choice-note.result
+$ tasks-axi add sample-wave-call ...; fm-captain-hold.sh hold sample-wave-call
+sample-wave-call
+$ fm-procevent.sh register lavish lavish-b0a4d0000000f1e3 -- board-source.sh   (source replays tabular-choice-note.result)
+registered: lavish-b0a4d0000000f1e3 (lavish)
+$ fm-captain-hold.sh bind lavish-b0a4d0000000f1e3
+bound: lavish-b0a4d0000000f1e3 -> (any)
+$ fm-procevent.sh start lavish-b0a4d0000000f1e3
+reconciles-fed: lavish-b0a4d0000000f1e3
+answers-fed: lavish-b0a4d0000000f1e3
+not-autohandled: lavish-b0a4d0000000f1e3 (left for the handler; still unacknowledged)
+retired: lavish-b0a4d0000000f1e3 (adapter classified the captured result terminal)
+captured: /private/var/folders/qh/9g4nkxyd4_b41v4nz0qpt8b40000gn/T/fm-lab.Yxsmne/state/procevent-inbox/lavish-b0a4d0000000f1e3.1.result
+(exit 0)
+--- wake queue:
+1792048938	1	check	procevent:lavish-b0a4d0000000f1e3:1	check: procevent lavish lavish-b0a4d0000000f1e3 1
+$ tasks-axi show sample-wave-call --full
+task:
+  id: sample-wave-call
+  title: Sample wave plan
+  state: queued
+  blocked: no
+  blocked_by: none
+  held: no
+  hold_reason: "-"
+  hold_kind: "-"
+  hold_until: "-"
+  kind: ship
+  repo: sample
+  priority: "-"
+  created: 2026-10-15
+  closed: "-"
+  deps: none
+  links: none
+  body: "Resolution recorded by fm-captain-hold.\nDecision digest: 8e6eca8f30c77e5a898b6495eb10303ec6e24ec457e531aff2beffcce7a3c108\nResolution mode: released\n\nCaptain decision:\nCaptain answered this call through the captured result lavish-b0a4d0000000f1e3 sequence 1.\nTask: sample-wave-call\nAnswer: W1.begin\nAnswer as shown to the captain: sample-wave-call: W1.begin\nCaptain note with the answer: note: Run step one on the first host, in the same session that prepared it. Send every chart task to the second host, it has to be visually verified.  All scheduling and routing tasks to the first host Spread the remaining tasks across the other hosts Both hosts can run several tasks in parallel, so use that | W1: begin wave A as drawn\n\nWave plan."
+(lab home removed: /var/folders/qh/9g4nkxyd4_b41v4nz0qpt8b40000gn/T//fm-lab.Yxsmne)
+
+################ [base commit] end-to-end replay of list-form-compound.result
+$ tasks-axi add sample-wave-call ...; fm-captain-hold.sh hold sample-wave-call
+sample-wave-call
+$ fm-procevent.sh register lavish lavish-b0a4d0000000f1e3 -- board-source.sh   (source replays list-form-compound.result)
+registered: lavish-b0a4d0000000f1e3 (lavish)
+$ fm-captain-hold.sh bind lavish-b0a4d0000000f1e3
+bound: lavish-b0a4d0000000f1e3 -> (any)
+$ fm-procevent.sh start lavish-b0a4d0000000f1e3
+reconciles-fed: lavish-b0a4d0000000f1e3
+answers-fed: lavish-b0a4d0000000f1e3
+not-autohandled: lavish-b0a4d0000000f1e3 (left for the handler; still unacknowledged)
+captured: /private/var/folders/qh/9g4nkxyd4_b41v4nz0qpt8b40000gn/T/fm-lab.GkJp9p/state/procevent-inbox/lavish-b0a4d0000000f1e3.1.result
+(exit 0)
+--- wake queue:
+1792048942	1	check	procevent:lavish-b0a4d0000000f1e3:1	check: procevent lavish lavish-b0a4d0000000f1e3 1
+$ tasks-axi show sample-wave-call --full
+task:
+  id: sample-wave-call
+  title: Sample wave plan
+  state: queued
+  blocked: no
+  blocked_by: none
+  held: yes
+  hold_reason: "fm-hold-v1:Y2FwdGFpbiBnbyBuZWVkZWQ="
+  hold_kind: captain
+  hold_until: "-"
+  kind: ship
+  repo: sample
+  priority: "-"
+  created: 2026-10-15
+  closed: "-"
+  deps: none
+  links: none
+  body: "Captain hold set: 2026-10-15T07:22:19Z\n\nWave plan."
+(lab home removed: /var/folders/qh/9g4nkxyd4_b41v4nz0qpt8b40000gn/T//fm-lab.GkJp9p)
+
+################ [target commit] end-to-end replay of list-form-compound.result
+$ tasks-axi add sample-wave-call ...; fm-captain-hold.sh hold sample-wave-call
+sample-wave-call
+$ fm-procevent.sh register lavish lavish-b0a4d0000000f1e3 -- board-source.sh   (source replays list-form-compound.result)
+registered: lavish-b0a4d0000000f1e3 (lavish)
+$ fm-captain-hold.sh bind lavish-b0a4d0000000f1e3
+bound: lavish-b0a4d0000000f1e3 -> (any)
+$ fm-procevent.sh start lavish-b0a4d0000000f1e3
+reconciles-fed: lavish-b0a4d0000000f1e3
+answers-fed: lavish-b0a4d0000000f1e3
+not-autohandled: lavish-b0a4d0000000f1e3 (left for the handler; still unacknowledged)
+captured: /private/var/folders/qh/9g4nkxyd4_b41v4nz0qpt8b40000gn/T/fm-lab.urQxUl/state/procevent-inbox/lavish-b0a4d0000000f1e3.1.result
+(exit 0)
+--- wake queue:
+1792048951	1	check	procevent:lavish-b0a4d0000000f1e3:1	check: procevent lavish lavish-b0a4d0000000f1e3 1
+$ tasks-axi show sample-wave-call --full
+task:
+  id: sample-wave-call
+  title: Sample wave plan
+  state: queued
+  blocked: no
+  blocked_by: none
+  held: no
+  hold_reason: "-"
+  hold_kind: "-"
+  hold_until: "-"
+  kind: ship
+  repo: sample
+  priority: "-"
+  created: 2026-10-15
+  closed: "-"
+  deps: none
+  links: none
+  body: "Resolution recorded by fm-captain-hold.\nDecision digest: fc3908a7c74cdb76e419270cf10551fcd8b2e0fe96fa113782e64893c0e9a912\nResolution mode: released\n\nCaptain decision:\nCaptain answered this call through the captured result lavish-b0a4d0000000f1e3 sequence 1.\nTask: sample-wave-call\nAnswer: F1.oneside-L1.both\nAnswer as shown to the captain: sample-wave-call: F1.oneside-L1.both\nCaptain note with the answer: F1: one-side enforcement is enough for now; L1: resolved for the picture, pinned for matching\n\nWave plan."
+(lab home removed: /var/folders/qh/9g4nkxyd4_b41v4nz0qpt8b40000gn/T//fm-lab.urQxUl)

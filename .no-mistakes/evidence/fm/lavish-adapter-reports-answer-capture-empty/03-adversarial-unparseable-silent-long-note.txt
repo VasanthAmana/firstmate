@@ -1,0 +1,176 @@
+########## read unknown-field.result
+  capture> session:
+  capture>   file: /a.html
+  capture>   status: feedback
+  capture> annotations[1]{tag,text}:
+  capture>   "choice","late answer"
+
+--- [base] read exit=0
+    SESSION-ENDING MESSAGE: (none)
+    
+    declared_items: 0
+    presented_items: 0
+    malformed_items: 0
+    complete: yes
+    lifecycle: feedback
+    session_ended: (unset)
+    annotation_count: 0
+    session_ending_message_count: 0
+    
+    ANNOTATIONS: (none)
+--- [base] answers exit=0 stderr: 
+--- [target] read exit=3
+    UNPARSEABLE CAPTURE: this result carries content this reader could not parse, so the counts below are NOT the whole round; read the raw capture at /var/folders/qh/9g4nkxyd4_b41v4nz0qpt8b40000gn/T/tmp.DXv4guoZUo/adv/unknown-field.result
+    unparsed: an unrecognized top-level field annotations
+    
+    SESSION-ENDING MESSAGE: (none)
+    
+    declared_items: 0
+    presented_items: 0
+    malformed_items: 0
+    complete: no
+    lifecycle: feedback
+    session_ended: (unset)
+    annotation_count: 0
+--- [target] answers exit=3 stderr: error: /var/folders/qh/9g4nkxyd4_b41v4nz0qpt8b40000gn/T/tmp.DXv4guoZUo/adv/unknown-field.result carries content this reader could not parse; choices above are only what it could read, so read the raw 
+########## read bad-header.result
+  capture> session:
+  capture>   file: /a.html
+  capture>   status: feedback
+  capture> prompts[many]{tag,text}:
+  capture>   "choice","late answer"
+
+--- [base] read exit=0
+    SESSION-ENDING MESSAGE: (none)
+    
+    declared_items: 0
+    presented_items: 0
+    malformed_items: 0
+    complete: yes
+    lifecycle: feedback
+    session_ended: (unset)
+    annotation_count: 0
+    session_ending_message_count: 0
+    
+    ANNOTATIONS: (none)
+--- [base] answers exit=0 stderr: 
+--- [target] read exit=3
+    UNPARSEABLE CAPTURE: this result carries content this reader could not parse, so the counts below are NOT the whole round; read the raw capture at /var/folders/qh/9g4nkxyd4_b41v4nz0qpt8b40000gn/T/tmp.DXv4guoZUo/adv/bad-header.result
+    unparsed: an unreadable prompts header
+    
+    SESSION-ENDING MESSAGE: (none)
+    
+    declared_items: 0
+    presented_items: 0
+    malformed_items: 0
+    complete: no
+    lifecycle: feedback
+    session_ended: (unset)
+    annotation_count: 0
+--- [target] answers exit=3 stderr: error: /var/folders/qh/9g4nkxyd4_b41v4nz0qpt8b40000gn/T/tmp.DXv4guoZUo/adv/bad-header.result carries content this reader could not parse; choices above are only what it could read, so read the raw cap
+########## read garbage.result
+  capture> garbage that is not a session block
+
+--- [base] read exit=0
+    SESSION-ENDING MESSAGE: (none)
+    
+    declared_items: 0
+    presented_items: 0
+    malformed_items: 0
+    complete: yes
+    lifecycle: unknown
+    session_ended: (unset)
+    annotation_count: 0
+    session_ending_message_count: 0
+    
+    ANNOTATIONS: (none)
+--- [base] answers exit=0 stderr: 
+--- [target] read exit=3
+    UNPARSEABLE CAPTURE: this result carries content this reader could not parse, so the counts below are NOT the whole round; read the raw capture at /var/folders/qh/9g4nkxyd4_b41v4nz0qpt8b40000gn/T/tmp.DXv4guoZUo/adv/garbage.result
+    unparsed: an unrecognized top-level line
+    unparsed: neither a session block nor an error
+    
+    SESSION-ENDING MESSAGE: (none)
+    
+    declared_items: 0
+    presented_items: 0
+    malformed_items: 0
+    complete: no
+    lifecycle: unknown
+    session_ended: (unset)
+--- [target] answers exit=3 stderr: error: /var/folders/qh/9g4nkxyd4_b41v4nz0qpt8b40000gn/T/tmp.DXv4guoZUo/adv/garbage.result carries content this reader could not parse; choices above are only what it could read, so read the raw captur
+########## read empty-file.result
+
+--- [base] read exit=0
+    SESSION-ENDING MESSAGE: (none)
+    
+    declared_items: 0
+    presented_items: 0
+    malformed_items: 0
+    complete: yes
+    lifecycle: unknown
+    session_ended: (unset)
+    annotation_count: 0
+    session_ending_message_count: 0
+    
+    ANNOTATIONS: (none)
+--- [base] answers exit=0 stderr: 
+--- [target] read exit=3
+    UNPARSEABLE CAPTURE: this result carries content this reader could not parse, so the counts below are NOT the whole round; read the raw capture at /var/folders/qh/9g4nkxyd4_b41v4nz0qpt8b40000gn/T/tmp.DXv4guoZUo/adv/empty-file.result
+    unparsed: neither a session block nor an error
+    
+    SESSION-ENDING MESSAGE: (none)
+    
+    declared_items: 0
+    presented_items: 0
+    malformed_items: 0
+    complete: no
+    lifecycle: unknown
+    session_ended: (unset)
+    annotation_count: 0
+--- [target] answers exit=3 stderr: error: /var/folders/qh/9g4nkxyd4_b41v4nz0qpt8b40000gn/T/tmp.DXv4guoZUo/adv/empty-file.result carries content this reader could not parse; choices above are only what it could read, so read the raw cap
+########## read empty-close.result
+  capture> session:
+  capture>   file: /a.html
+  capture>   status: ended
+  capture>   ended_by: user
+  capture> next_step: Stop polling.
+
+--- [base] read exit=0
+    SESSION-ENDING MESSAGE: (none)
+    
+    declared_items: 0
+    presented_items: 0
+    malformed_items: 0
+    complete: yes
+    lifecycle: ended
+    session_ended: (unset)
+    annotation_count: 0
+    session_ending_message_count: 0
+    
+    ANNOTATIONS: (none)
+--- [base] answers exit=0 stderr: 
+--- [target] read exit=0
+    SESSION-ENDING MESSAGE: (none)
+    
+    declared_items: 0
+    presented_items: 0
+    malformed_items: 0
+    complete: yes
+    lifecycle: ended
+    session_ended: (unset)
+    annotation_count: 0
+    session_ending_message_count: 0
+    
+    ANNOTATIONS: (none)
+--- [target] answers exit=0 stderr: 
+########## [base] silent empty-close.result exit=0 (0 = absorbed as no-op, nonzero = wakes)
+########## [target] silent empty-close.result exit=0 (0 = absorbed as no-op, nonzero = wakes)
+########## [base] silent ended-unknown.result exit=0 (0 = absorbed as no-op, nonzero = wakes)
+########## [target] silent ended-unknown.result exit=1 (0 = absorbed as no-op, nonzero = wakes)
+########## [base] silent ended-listform.result exit=1 (0 = absorbed as no-op, nonzero = wakes)
+########## [target] silent ended-listform.result exit=1 (0 = absorbed as no-op, nonzero = wakes)
+########## [base] answers long-note.result exit=0 rows=[] stderr: 
+########## [target] answers long-note.result exit=3 rows=[] stderr: error: /var/folders/qh/9g4nkxyd4_b41v4nz0qpt8b40000gn/T/tmp.DXv4guoZUo/adv/long-note.result carries content this reader could not parse; choices above are only what it could read, so read the raw capt
+########## [base] answers superseded-by-long.result exit=0 rows=[sample-same-call ⇥ A1.yes ⇥ first] stderr: 
+########## [target] answers superseded-by-long.result exit=3 rows=[] stderr: error: /var/folders/qh/9g4nkxyd4_b41v4nz0qpt8b40000gn/T/tmp.DXv4guoZUo/adv/superseded-by-long.result carries content this reader could not parse; choices above are only what it could read, so read the
