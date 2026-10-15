@@ -193,7 +193,8 @@ Only `answer` with the captain's words or evidence-backed `reconcile close` reso
 
 "A keyed answer resolves its matching captain-held task" is one capability with one owner.
 `answers` is its channel-agnostic entry point.
-It reads `<task-id>\t<answer>\t<label>[\t<mode>]` lines and resolves each named task through the same `answer` path.
+It reads `<task-id>\t<answer>\t<label>[\t<mode>[\t<note>]]` lines and resolves each named task through the same `answer` path.
+The optional note column is the captain's note typed beside the answer, and the durable decision records it with the answer.
 Every guard therefore applies identically no matter which channel the answer arrived on.
 
 The optional mode column carries a card-declared close:
@@ -270,7 +271,7 @@ The Lavish adapter splits each capture between two commands:
 
 | Command | What it emits |
 | --- | --- |
-| `bin/fm-procevent-lavish.sh answers` | An exact non-reconcile selection, or a bare note when no option was selected. |
+| `bin/fm-procevent-lavish.sh answers` | An exact non-reconcile selection with any note typed beside it, or a bare note when no option was selected. |
 | `reconciles` | Only task ids whose structured selection is Reconcile, carrying their notes as request provenance. |
 
 Current rows require the versioned shape and the `choice` tag.

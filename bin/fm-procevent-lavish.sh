@@ -28,10 +28,15 @@
 #            selector, tag, and text. A non-choice freeform comment (`prompt`)
 #            is printed as its own field even when a selector is also present
 #            and even when that comment matches the element text, so typed
-#            words are never dropped. Choice Context data is not a comment.
-#            Captain-supplied body lines are visibly prefixed so they cannot
-#            forge structural labels. Empty message and annotation sections
-#            are reported explicitly.
+#            words are never dropped. Choice Context data is not a comment: a
+#            choice instead presents its question, selection, note, and close
+#            as fields of their own, so a note typed beside a selection is
+#            never dropped. Captain-supplied body lines are visibly prefixed so
+#            they cannot forge structural labels. Empty message and annotation
+#            sections are reported explicitly. A capture it cannot fully parse
+#            opens with an UNPARSEABLE CAPTURE banner naming what it could not
+#            read, is never marked complete, and exits 3, so it can never read
+#            as an empty round.
 # poll       The registered listener command `arm` publishes, not a command to
 #            run in a conversational turn. It runs the published blocking poll
 #            and prints its response verbatim, absorbing only the one exact
@@ -62,16 +67,18 @@
 # result: the captain reads a board, says nothing, and closes it. Announcing that
 # put a wake in front of the handler whose entire content was that nothing
 # happened. `silent` therefore holds two narrow, positively-determined shapes -
-# a session this adapter classifies `ended` that carries no queued content block
-# at all, or `browser_disconnected`, which carries no answer while the session
-# remains open - and every other result stays announced.
+# a session this adapter classifies `ended`, or `browser_disconnected`, which
+# carries no answer while the session remains open, and in either case a capture
+# holding nothing but the published `session` block and `next_step` - and every
+# other result stays announced.
 #
 # Deliberately narrow, in both directions. A `Send & End` close carrying the
 # captain's actual answer arrives as `status: feedback` with `session_ended`, so
 # it classifies `feedback`, never `ended`, and is announced exactly as before; so
-# is any `ended` result that still carries a `prompts` or `feedback` block, which
-# the published poll is not expected to produce but which must never be dropped
-# on that expectation. A `waiting` session, a `missing` one, an `unknown` or
+# is any `ended` or disconnected result that still carries a `prompts` or
+# `feedback` block or any field outside the published vocabulary, which the
+# published poll is not expected to produce but which must never be dropped on
+# that expectation. A `waiting` session, a `missing` one, an `unknown` or
 # unreadable result, and any error all stay announced, because none of them
 # positively proves nothing was said. Silence is only ever an absence this
 # adapter can see in the result, never an absence it assumes.
@@ -522,61 +529,217 @@ cmd_terminal() {
   return 1
 }
 
-# Whether a completed result carries any queued content block at all. The
-# published response frames content as a top-level `prompts[N]{...}:` or
-# `feedback[N]{...}:` header whose rows are INDENTED, so this anchors on column
-# zero: an indented payload line is captain-supplied text and must never be able
-# to forge - or, here, to hide behind - a content header. Any recognized block
-# is content regardless of its declared count, while a malformed top-level
-# prompts or feedback header makes the result indeterminate.
+# THE ONE READER OF A CAPTURED RESULT, shared by `silent`, `answers`,
+# `reconciles`, and `read` so no command can understand a shape another one
+# misses. The published response is TOON. Its top-level fields sit at column
+# zero, and captain-supplied payload is always INDENTED below them, so payload
+# text can never forge a top-level field or a content header. Queued content
+# arrives as a `prompts` (or legacy `feedback`) block in either TOON form: the
+# tabular `prompts[N]{field,...}:` header with one CSV row per item, which TOON
+# uses when every item is flat, or the list `prompts[N]:` header with one
+# `- field: value` item each, which TOON uses as soon as any item carries a
+# nested object such as a text-range `target`. Both are read; nested values are
+# skipped because no command here consumes them.
 #
-# 0 = content present, 1 = provably no content, anything else = the check did
-# not complete. The caller must distinguish those three, because "the check
-# failed" is never proof that nothing was said.
-result_has_queued_content() {  # <result-file>
-  awk '
-    /^(prompts|feedback)\[[0-9]+\]\{[^}]*\}:[[:space:]]*$/ {
-      verdict = "present"
-      exit
-    }
-    /^(prompts|feedback)/ {
-      verdict = "indeterminate"
-      exit
-    }
-    END {
-      if (verdict == "present") exit 0
-      if (verdict == "indeterminate") exit 2
-      exit 1
-    }
-  ' "$1"
+# Anything this reader does not positively understand is recorded as a problem
+# rather than ignored: a top-level field outside the published vocabulary, an
+# unreadable content header, a second content block, rows beyond the declared
+# count, or a capture with neither a session block nor an error. A problem
+# makes the result UNPARSEABLE, which is a different finding from an empty
+# round and must never read as one: `read` says so and exits 3, `answers` and
+# `reconciles` still print every choice they could read and then exit 3, and
+# `silent` never holds an unparseable result back from its wake.
+#
+# parse_result(<path>) returns undef when the file cannot be read, else a hash:
+#   keys       top-level field names in order
+#   problems   descriptions of what could not be understood
+#   kind       "prompts", "feedback", or "" when no content block exists
+#   declared   the content block's declared item count, or 0
+#   items      one hash of field => decoded value per readable item
+#   malformed  items that were present but could not be read whole
+# shellcheck disable=SC2016 # Perl source, expanded by perl rather than the shell.
+LAVISH_RESULT_PERL='
+use strict;
+use warnings;
+use JSON::PP;
+my %KNOWN_FIELDS = map { $_ => 1 }
+  qw(session prompts feedback artifact_failures next_step dom_snapshot error code help);
+my $SCALAR_KEY = qr/(?:"(?:[^"\\]|\\.)*"|[A-Za-z_][A-Za-z0-9_.]*)/;
+sub unescape_value {
+  my ($v) = @_;
+  $v =~ s/\\(.)/$1 eq "n" ? "\n" : $1 eq "t" ? "\t" : $1 eq "r" ? "\r" : $1/ge;
+  return $v;
 }
+sub scalar_value {
+  my ($v) = @_;
+  $v =~ s/\s+\z//;
+  return unescape_value($1) if $v =~ /\A"((?:[^"\\]|\\.)*)"\z/;
+  return $v;
+}
+sub tabular_values {
+  my ($row, $fields) = @_;
+  my @vals;
+  while (length $row) {
+    if ($row =~ s/^"((?:[^"\\]|\\.)*)"//) {
+      push @vals, $1;
+    } else {
+      $row =~ s/^([^,]*)//;
+      push @vals, $1;
+    }
+    last unless $row =~ s/^,//;
+  }
+  if (@vals > @$fields) {
+    my ($preserve) = grep { $fields->[$_] eq "prompt" } 0 .. $#$fields;
+    ($preserve) = grep { $fields->[$_] eq "text" } 0 .. $#$fields unless defined $preserve;
+    if (defined $preserve) {
+      my $count = @vals - @$fields + 1;
+      my @parts = splice @vals, $preserve, $count;
+      splice @vals, $preserve, 0, join(",", @parts);
+    }
+  }
+  return if @vals != @$fields;
+  my %f;
+  $f{$fields->[$_]} = unescape_value($vals[$_]) for 0 .. $#$fields;
+  return \%f;
+}
+# One `key: value` field line of a list item. Returns 1 for a scalar stored in
+# the item, 0 for a nested or array value this reader skips, undef for a line
+# that is not a field at all.
+sub list_field {
+  my ($text, $item) = @_;
+  return unless $text =~ /\A($SCALAR_KEY)(\[[^\]]*\])?(\{[^}]*\})?:(?: (.*))?\z/;
+  my ($key, $array, $value) = ($1, defined $2 || defined $3, $4);
+  return 0 if $array || !defined $value || $value eq "";
+  $key = unescape_value($1) if $key =~ /\A"(.*)"\z/;
+  $item->{$key} = scalar_value($value);
+  return 1;
+}
+sub parse_result {
+  my ($path) = @_;
+  open my $fh, "<", $path or return;
+  my @lines = <$fh>;
+  close $fh;
+  chomp @lines;
+  my %r = (keys => [], problems => [], kind => "", declared => 0, items => [], malformed => 0);
+  my $i = 0;
+  while ($i < @lines) {
+    my $line = $lines[$i];
+    if ($line eq "" || $line =~ /\A\s/) {
+      $i++;
+      next;
+    }
+    my ($key) = $line =~ /\A([A-Za-z_][A-Za-z0-9_]*)(?:\[[^\]]*\])?(?:\{[^}]*\})?:(?:\s|\z)/;
+    if (!defined $key) {
+      push @{$r{problems}}, "an unrecognized top-level line";
+      $i++;
+      next;
+    }
+    push @{$r{keys}}, $key;
+    if (!$KNOWN_FIELDS{$key}) {
+      push @{$r{problems}}, "an unrecognized top-level field $key";
+      $i++;
+      next;
+    }
+    $i++;
+    next unless $key eq "prompts" || $key eq "feedback";
+    if (length $r{kind}) {
+      push @{$r{problems}}, "a second content block $key";
+      next;
+    }
+    $r{kind} = $key;
+    if ($line =~ /\A\w+\[(\d+)\]\{([^}]*)\}:\s*\z/) {
+      my @fields = split /,/, $2;
+      $r{declared} = $1;
+      my $rows = 0;
+      while ($i < @lines && $lines[$i] =~ /\A\s/) {
+        my $row = $lines[$i++];
+        if ($rows++ >= $r{declared}) {
+          push @{$r{problems}}, "rows beyond the declared $key count";
+          last;
+        }
+        $row =~ s/^\s+//;
+        my $item = tabular_values($row, \@fields);
+        if ($item) { push @{$r{items}}, $item } else { $r{malformed}++ }
+      }
+    } elsif ($line =~ /\A\w+\[(\d+)\]:\s*\z/) {
+      $r{declared} = $1;
+      my ($item, $bad, @items) = (undef, 0);
+      my $close = sub {
+        return unless $item;
+        if ($bad) { $r{malformed}++ } else { push @items, $item }
+      };
+      while ($i < @lines && $lines[$i] =~ /\A\s/) {
+        my $text = $lines[$i++];
+        if ($text =~ /\A  - (.*)\z/ || $text =~ /\A  -()\z/) {
+          $close->();
+          ($item, $bad) = ({}, 0);
+          my $first = $1;
+          next if $first eq "";
+          next if defined list_field($first, $item);
+          $item->{text} = scalar_value($first);
+        } elsif (!$item) {
+          push @{$r{problems}}, "an unreadable $key list";
+          last;
+        } elsif ($text =~ /\A    (\S.*)\z/) {
+          $bad = 1 unless defined list_field($1, $item);
+        } elsif ($text !~ /\A     /) {
+          $bad = 1;
+        }
+      }
+      $close->();
+      $r{items} = \@items;
+    } else {
+      push @{$r{problems}}, "an unreadable $key header";
+    }
+  }
+  my %seen = map { $_ => 1 } @{$r{keys}};
+  push @{$r{problems}}, "neither a session block nor an error"
+    unless $seen{session} || $seen{error};
+  return \%r;
+}
+sub choice_context {
+  my ($prompt) = @_;
+  return unless defined $prompt && $prompt =~ /Context data:\s*(\{.*\})/s;
+  my $data = eval { decode_json($1) };
+  return ref($data) eq "HASH" ? $data : undef;
+}
+'
 
 # Whether a captured result is a routine no-op the runner should record without
 # announcing, for the generic runner's silence seam. Lavish's notion of "nothing
-# was said" lives here and nowhere else: an ended session carrying no queued
-# content block is a board the captain closed without saying anything, and the
-# handler learns nothing from being told. Anything else - a real answer, a
-# missing or waiting session, an unreadable result - is announced.
+# was said" lives here and nowhere else: an ended or browser-disconnected session
+# whose capture holds nothing but the published `session` block and `next_step`
+# is a board that carries no answer, and the handler learns nothing from being
+# told. Anything else - a real answer, any content block even one declared
+# empty, an unrecognized field, a missing or waiting session, an unreadable or
+# unparseable result - is announced, because an unknown payload is never proof
+# that nothing was said.
 cmd_silent() {
-  local file=${1-} content_rc
+  local file=${1-} lifecycle
   [ -n "$file" ] || usage
   [ -f "$file" ] && [ ! -L "$file" ] || die "result file does not exist: $file"
-  [ "$(cmd_classify "$file")" = disconnected ] && return 0
-  [ "$(cmd_classify "$file")" = ended ] || return 1
-  result_has_queued_content "$file"
-  content_rc=$?
-  # Only a completed check that proved the result carries nothing declares
-  # silence; a check that could not complete announces, like every other
-  # uncertainty here.
-  [ "$content_rc" -eq 1 ]
+  lifecycle=$(cmd_classify "$file")
+  case "$lifecycle" in
+    ended|disconnected) ;;
+    *) return 1 ;;
+  esac
+  perl -e "$LAVISH_RESULT_PERL"'
+    my $r = parse_result($ARGV[0]) or exit 2;
+    exit 1 if @{$r->{problems}} || length $r->{kind};
+    for my $key (@{$r->{keys}}) {
+      exit 1 unless $key eq "session" || $key eq "next_step";
+    }
+    exit 0;
+  ' "$file"
 }
 
-# Print `key<TAB>answer<TAB>label[<TAB>mode]` for each non-reconcile structured choice the
+# Print `key<TAB>answer<TAB>label[<TAB>mode[<TAB>note]]` for each non-reconcile structured choice the
 # captain submitted in a captured result; the optional mode column relays the
-# card's declared close mode (`done` or `release`) to the keyed-answer intake. The published response frames queued feedback as
-# a `prompts[N]{field,...}:` header followed by exactly N indented CSV rows whose
-# quoted fields carry JSON-style escapes, so this reads the declared field ORDER
-# rather than assuming a fixed column, and takes only rows whose `tag` field is
+# card's declared close mode (`done` or `release`, empty for the default) to the
+# keyed-answer intake, and the note column carries the captain's note whenever
+# one accompanies a selection, so a selection never reaches the intake without
+# the words typed beside it. Items come from the shared reader above, in either
+# TOON form, and this takes only items whose `tag` field is
 # `choice`. A freeform `message` row is captain prose and is deliberately never a
 # source of decision keys. A row that does not carry both a slug-shaped `question`
 # and the versioned `selection` and `note` fields inside its `Context data:` block
@@ -590,47 +753,17 @@ cmd_choice_rows() {
   local selection=$1 file=${2-}
   [ -n "$file" ] || usage
   [ -f "$file" ] && [ ! -L "$file" ] || die "result file does not exist: $file"
-  perl -MJSON::PP -e '
-    use strict; use warnings;
+  perl -e "$LAVISH_RESULT_PERL"'
     my ($selection, $path) = @ARGV;
-    open my $fh, "<", $path or exit 1;
-    my (@fields, $want, @rows);
-    while (my $line = <$fh>) {
-      if (!@fields) {
-        next unless $line =~ /^prompts\[(\d+)\]\{([^}]*)\}:\s*$/;
-        ($want, @fields) = ($1, split /,/, $2);
-        next;
-      }
-      last unless $line =~ /^\s/;
-      last if @rows >= $want;
-      chomp $line;
-      push @rows, $line;
-    }
-    close $fh;
+    my $r = parse_result($path) or exit 1;
+    my @items = $r->{kind} eq "prompts" ? @{$r->{items}} : ();
     my %seen;
     my @choices;
-    for my $row (@rows) {
-      $row =~ s/^\s+//;
-      my @vals;
-      while (length $row) {
-        if ($row =~ s/^"((?:[^"\\]|\\.)*)"//) {
-          my $v = $1;
-          $v =~ s/\\(.)/$1 eq "n" ? "\n" : $1 eq "t" ? "\t" : $1 eq "r" ? "\r" : $1/ge;
-          push @vals, $v;
-        } else {
-          $row =~ s/^([^,]*)//;
-          push @vals, $1;
-        }
-        last unless $row =~ s/^,//;
-      }
-      my %f;
-      $f{$fields[$_]} = $vals[$_] for 0 .. $#fields;
+    my $unreadable = 0;
+    for my $item (@items) {
+      my %f = %$item;
       next unless defined $f{tag} && $f{tag} eq "choice";
-      my $prompt = $f{prompt};
-      next unless defined $prompt && $prompt =~ /Context data:\s*(\{.*\})/s;
-      my $ctx = $1;
-      my $data = eval { decode_json($ctx) };
-      next unless ref($data) eq "HASH";
+      my $data = choice_context($f{prompt}) or next;
       my ($key, $selected, $note, $answer, $legacy);
       if (defined($data->{schema}) && !ref($data->{schema})
           && $data->{schema} eq "fm-bearings-answer.v1") {
@@ -639,8 +772,13 @@ cmd_choice_rows() {
         $note = $data->{note};
         next if !defined($key) || ref($key) || !defined($selected) || ref($selected)
           || !defined($note) || ref($note);
-        next unless $selected eq "" || $selected =~ /\A[A-Za-z0-9._-]{1,128}\z/;
-        next unless length($note) <= 512;
+        if ($key =~ /\A[A-Za-z0-9._-]{1,128}\z/
+            && (length($note) > 512
+              || ($selected ne "" && $selected !~ /\A[A-Za-z0-9._-]{1,128}\z/))) {
+          $unreadable = 1;
+          $choices[delete $seen{$key}] = undef if defined $seen{$key};
+          next;
+        }
         next unless length($selected) || length($note);
         $answer = length($selected) ? $selected : $note;
         $legacy = 0;
@@ -687,11 +825,20 @@ cmd_choice_rows() {
         next;
       }
       next if $choice->{selection} eq "reconcile";
-      print length $choice->{mode}
-        ? "$choice->{key}\t$choice->{answer}\t$choice->{label}\t$choice->{mode}\n"
-        : "$choice->{key}\t$choice->{answer}\t$choice->{label}\n";
+      my @row = ($choice->{key}, $choice->{answer}, $choice->{label});
+      # A note beside a selection is part of the answer, never decoration; a
+      # bare note is already the answer column.
+      my $note = length($choice->{selection}) ? $choice->{note} : "";
+      push @row, $choice->{mode} if length($choice->{mode}) || length($note);
+      push @row, $note if length $note;
+      print join("\t", @row), "\n";
     }
-  ' "$selection" "$file"
+    exit 3 if @{$r->{problems}} || $r->{malformed} || $unreadable;
+  ' "$selection" "$file" || {
+    local rc=$?
+    [ "$rc" -ne 3 ] || printf 'error: %s carries content this reader could not parse; choices above are only what it could read, so read the raw capture\n' "$file" >&2
+    return "$rc"
+  }
 }
 
 cmd_answers() { cmd_choice_rows answers "$@"; }
@@ -711,58 +858,20 @@ cmd_read() {
   [ -f "$file" ] && [ ! -L "$file" ] || die "result file does not exist: $file"
   lifecycle=$(cmd_classify "$file")
   session_ended=$(session_field "$file" session_ended)
-  perl -e '
-    use strict; use warnings;
+  perl -e "$LAVISH_RESULT_PERL"'
     my ($path, $lifecycle, $session_ended) = @ARGV;
-    open my $fh, "<", $path or exit 1;
-    my (@fields, $want, @rows);
-    while (my $line = <$fh>) {
-      if (!@fields) {
-        next unless $line =~ /^(?:prompts|feedback)\[(\d+)\]\{([^}]*)\}:\s*$/;
-        ($want, @fields) = ($1, split /,/, $2);
-        next;
-      }
-      last unless $line =~ /^\s/;
-      last if defined($want) && @rows >= $want;
-      chomp $line;
-      push @rows, $line;
-    }
-    close $fh;
-    $want = 0 unless defined $want;
-    my @parsed;
-    my $malformed = 0;
-    for my $row (@rows) {
-      $row =~ s/^\s+//;
-      my @vals;
-      while (length $row) {
-        if ($row =~ s/^"((?:[^"\\]|\\.)*)"//) {
-          push @vals, $1;
-        } else {
-          $row =~ s/^([^,]*)//;
-          push @vals, $1;
-        }
-        last unless $row =~ s/^,//;
-      }
-      if (@vals > @fields) {
-        my ($preserve) = grep { $fields[$_] eq "prompt" } 0 .. $#fields;
-        ($preserve) = grep { $fields[$_] eq "text" } 0 .. $#fields unless defined $preserve;
-        if (defined $preserve) {
-          my $count = @vals - @fields + 1;
-          my @parts = splice @vals, $preserve, $count;
-          splice @vals, $preserve, 0, join(",", @parts);
-        }
-      }
-      if (@vals != @fields) {
-        $malformed++;
-        next;
-      }
-      s/\\(.)/$1 eq "n" ? "\n" : $1 eq "t" ? "\t" : $1 eq "r" ? "\r" : $1/ge for @vals;
-      my %f;
-      $f{$fields[$_]} = $vals[$_] for 0 .. $#fields;
-      push @parsed, \%f;
-    }
+    my $r = parse_result($path) or exit 1;
+    my @parsed = @{$r->{items}};
+    my $want = $r->{declared};
+    my $malformed = $r->{malformed};
+    my @problems = @{$r->{problems}};
     my $presented = scalar @parsed;
-    my $complete = ($presented == $want && !$malformed) ? "yes" : "no";
+    my $complete = ($presented == $want && !$malformed && !@problems) ? "yes" : "no";
+    if (@problems) {
+      print "UNPARSEABLE CAPTURE: this result carries content this reader could not parse, so the counts below are NOT the whole round; read the raw capture at $path\n";
+      print "unparsed: $_\n" for @problems;
+      print "\n";
+    }
     my @messages;
     my @annotations;
     for my $f (@parsed) {
@@ -825,7 +934,36 @@ cmd_read() {
         my $comment = defined $f->{prompt} ? $f->{prompt} : "";
         my $body = length $elem ? $elem : $comment;
         emit_body($body);
-        if ($tag ne "choice" && length $comment) {
+        if ($tag ne "choice") {
+          if (length $comment) {
+            print "prompt:\n";
+            emit_body($comment);
+          }
+          next;
+        }
+        # A choice presents what its Context data carries - the selection AND
+        # the note typed beside it - because the element text is only a label
+        # and a selection without its note is a partial answer. Context data
+        # this reader does not recognize is shown raw rather than dropped.
+        my $data = choice_context($comment);
+        if ($data && defined($data->{schema}) && !ref($data->{schema})
+            && $data->{schema} eq "fm-bearings-answer.v1") {
+          for my $field (qw(question selection note close)) {
+            my $value = $data->{$field};
+            next if $field eq "close" && !defined $value;
+            $value = "" unless defined $value && !ref $value;
+            if (length $value) {
+              print "$field:\n";
+              emit_body($value);
+            } else {
+              print "$field: (none)\n";
+            }
+          }
+        } elsif ($data && !exists($data->{schema}) && defined($data->{answer})
+            && !ref($data->{answer})) {
+          print "answer:\n";
+          emit_body($data->{answer});
+        } elsif (length $comment) {
           print "prompt:\n";
           emit_body($comment);
         }
@@ -835,6 +973,7 @@ cmd_read() {
       print "ANNOTATIONS: (none)\n";
     }
     print "END LAVISH RESULT ($presented of $want)\n";
+    exit 3 if @problems;
   ' "$file" "$lifecycle" "$session_ended"
 }
 

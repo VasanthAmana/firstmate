@@ -2379,6 +2379,51 @@ SH
   pass "a board answer reaches the keyed-answer intake and wakes firstmate"
 }
 
+# The captain's note travels with the selection into the durable decision. Both
+# board capture shapes are replayed through the real runner: a tabular one whose
+# note carried a multi-line instruction the intake used to drop, and one framed
+# in TOON's list form that used to read as an empty round.
+test_board_note_reaches_the_durable_decision() {
+  local capture home sid stub out show
+  for capture in tabular-choice-note list-form-compound; do
+    home=$(make_home "board-note-$capture")
+    sid=lavish-b0a4d0000000f1e3
+    fm_test_track_procevent_home "$home" "$home/procevent-claims"
+    tasks_in "$home" add sample-wave-call "Sample wave plan" --kind ship --repo sample \
+      --body 'Wave plan.' >/dev/null || fail "could not create the held work"
+    run_captain "$home" hold sample-wave-call --reason "captain go needed" >/dev/null \
+      || fail "could not hold the work for the captain"
+    stub="$home/board-source.sh"
+    printf '#!/usr/bin/env bash\ncat %q\n' "$ROOT/tests/captures/lavish-board-answers/$capture.result" > "$stub"
+    chmod +x "$stub"
+    run_procevent "$home" register lavish "$sid" -- "$stub" >/dev/null \
+      || fail "could not register the $capture board source"
+    run_captain "$home" bind "$sid" >/dev/null || fail "could not bind the $capture board source"
+    out=$(run_procevent "$home" start "$sid" 2>&1) \
+      || fail "the $capture board source runner did not complete: $out"
+    assert_contains "$out" "answers-fed: $sid" "the $capture answer never reached the intake: $out"
+    assert_contains "$(cat "$home/state/.wake-queue" 2>/dev/null || true)" "check: procevent lavish $sid 1" \
+      "the $capture answer produced no wake"
+    show=$(tasks_in "$home" show sample-wave-call --full)
+    assert_contains "$show" "Resolution mode: released" "the $capture card's release close was not applied"
+    case "$capture" in
+      tabular-choice-note)
+        assert_contains "$show" "Answer: W1.begin" "the tabular selection was lost"
+        assert_contains "$show" "Captain note with the answer: note: Run step one on the first host, in the same session that prepared it. Send every chart task to the second host" \
+          "the durable decision dropped the instruction typed beside the selection"
+        assert_contains "$show" "Spread the remaining tasks across the other hosts" \
+          "the durable decision truncated the captain's instruction"
+        ;;
+      list-form-compound)
+        assert_contains "$show" "Answer: F1.oneside-L1.both" "the list-form compound selection was lost"
+        assert_contains "$show" "Captain note with the answer: F1: one-side enforcement is enough for now" \
+          "the durable decision dropped the compound selection's note"
+        ;;
+    esac
+  done
+  pass "a board note reaches the durable decision with its selection"
+}
+
 # The intake is channel-agnostic, so chat must reach it the same way a captured
 # review does - for a task-id key, and for a legacy composed identity.
 test_chat_channel_feeds_the_same_keyed_answer_intake() {
@@ -4742,6 +4787,7 @@ test_reconcile_outcomes_retry_partial_failures_once
 test_unbound_source_closes_no_hold
 test_legacy_identities_keep_working
 test_board_answer_reaches_the_keyed_answer_intake
+test_board_note_reaches_the_durable_decision
 test_chat_channel_feeds_the_same_keyed_answer_intake
 test_origin_slug_validation_precedes_path_construction
 test_status_resolution_over_an_open_hold_is_signalled

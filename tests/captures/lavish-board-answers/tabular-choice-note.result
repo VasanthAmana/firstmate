@@ -1,0 +1,9 @@
+session:
+  file: /home/sample/boards/sample-wave-call/board.html
+  status: feedback
+  session_ended: true
+  ended_by: user
+prompts[1]{uid,prompt,selector,tag,text}:
+  "2","sample-wave-call decisions - W1: begin wave A as drawn - note: Run step one on the first host, in the same session that prepared it.\nSend every chart task to the second host, it has to be visually verified. \nAll scheduling and routing tasks to the first host\nSpread the remaining tasks across the other hosts\nBoth hosts can run several tasks in parallel, so use that\n\nContext data:\n{\n  \"schema\": \"fm-bearings-answer.v1\",\n  \"question\": \"sample-wave-call\",\n  \"selection\": \"W1.begin\",\n  \"note\": \"note: Run step one on the first host, in the same session that prepared it.\\nSend every chart task to the second host, it has to be visually verified. \\nAll scheduling and routing tasks to the first host\\nSpread the remaining tasks across the other hosts\\nBoth hosts can run several tasks in parallel, so use that | W1: begin wave A as drawn\",\n  \"close\": \"release\"\n}",form#card-form-2,choice,"sample-wave-call: W1.begin"
+next_step: This was the last feedback before the user ended the session. Stop polling /home/sample/boards/sample-wave-call/board.html and do not reopen it - deliver any remaining updates directly in this conversation instead.
+dom_snapshot: "uid=3 body \"Sample wave plan\"\n  uid=4 main \"Sample wave plan\"\n    uid=5 h1 \"Sample wave plan\"\n    uid=6 form \"W1: begin wave A as drawn\""
