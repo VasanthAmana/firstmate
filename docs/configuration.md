@@ -2027,9 +2027,9 @@ Whether a captured result is a routine no-op is adapter knowledge too, and the r
 
 **Lavish silence rules**
 
-- For Lavish that verdict covers two shapes - a session the adapter classifies `ended` that carries no queued content block at all, which is a review surface closed with nothing said, and `browser_disconnected` (classified `disconnected`), which carries no answer while the session remains open.
-- Any recognized top-level `prompts` or `feedback` block counts as content regardless of its declared count, and a malformed header makes the result indeterminate rather than empty.
-- A `Send & End` close carrying the captain's answer arrives as `status: feedback` with `session_ended`, so it classifies `feedback` and is announced unchanged, as is any `ended` result that still carries content, and every `waiting`, `missing`, `unknown`, or unreadable result.
+- For Lavish that verdict covers two shapes - a session the adapter classifies `ended`, which is a review surface closed with nothing said, and `browser_disconnected` (classified `disconnected`), which carries no answer while the session remains open - and in either case only a capture holding nothing but the published `session` block and `next_step`.
+- Any top-level `prompts` or `feedback` block in either TOON form counts as content regardless of its declared count, and an unrecognized top-level field or line or a malformed header makes the result unparseable rather than empty, so it wakes.
+- A `Send & End` close carrying the captain's answer arrives as `status: feedback` with `session_ended`, so it classifies `feedback` and is announced unchanged, as is any `ended` or disconnected result that still carries content, and every `waiting`, `missing`, `unknown`, unreadable, or unparseable result.
 
 **Retire terminal sources**
 
