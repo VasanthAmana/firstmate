@@ -759,6 +759,7 @@ cmd_choice_rows() {
     my @items = $r->{kind} eq "prompts" ? @{$r->{items}} : ();
     my %seen;
     my @choices;
+    my $unreadable = 0;
     for my $item (@items) {
       my %f = %$item;
       next unless defined $f{tag} && $f{tag} eq "choice";
@@ -771,8 +772,12 @@ cmd_choice_rows() {
         $note = $data->{note};
         next if !defined($key) || ref($key) || !defined($selected) || ref($selected)
           || !defined($note) || ref($note);
-        next unless $selected eq "" || $selected =~ /\A[A-Za-z0-9._-]{1,128}\z/;
-        next unless length($note) <= 512;
+        if ($key =~ /\A[A-Za-z0-9._-]{1,128}\z/
+            && (length($note) > 512
+              || ($selected ne "" && $selected !~ /\A[A-Za-z0-9._-]{1,128}\z/))) {
+          $unreadable = 1;
+          next;
+        }
         next unless length($selected) || length($note);
         $answer = length($selected) ? $selected : $note;
         $legacy = 0;
@@ -827,7 +832,7 @@ cmd_choice_rows() {
       push @row, $note if length $note;
       print join("\t", @row), "\n";
     }
-    exit 3 if @{$r->{problems}} || $r->{malformed};
+    exit 3 if @{$r->{problems}} || $r->{malformed} || $unreadable;
   ' "$selection" "$file" || {
     local rc=$?
     [ "$rc" -ne 3 ] || printf 'error: %s carries content this reader could not parse; choices above are only what it could read, so read the raw capture\n' "$file" >&2

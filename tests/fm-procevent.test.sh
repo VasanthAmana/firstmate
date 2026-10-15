@@ -3500,6 +3500,31 @@ set +e
 rc=$?
 set -e
 [ "$rc" -eq 3 ] || fail "answers exited $rc on an unparseable capture instead of reporting it"
+choice_rows_rc() {  # <command> -> sets rc and out
+  set +e
+  out=$("$ROOT/bin/fm-procevent-lavish.sh" "$1" "$READ" 2>/dev/null)
+  rc=$?
+  set -e
+}
+long_note=$(printf 'word %.0s' $(seq 1 120))
+printf 'session:\n  file: /a.html\n  status: feedback\nprompts[2]{tag,text,prompt}:\n  "choice","short","Context data: {\\"schema\\":\\"fm-bearings-answer.v1\\",\\"question\\":\\"sample-short-call\\",\\"selection\\":\\"A1.yes\\",\\"note\\":\\"\\"}"\n  "choice","long","Context data: {\\"schema\\":\\"fm-bearings-answer.v1\\",\\"question\\":\\"sample-long-call\\",\\"selection\\":\\"B1.go\\",\\"note\\":\\"%s\\"}"\n' "$long_note" > "$READ"
+choice_rows_rc answers
+[ "$rc" -eq 3 ] || fail "answers exited $rc after dropping a choice whose note it could not carry"
+[ "$out" = "$(printf 'sample-short-call\tA1.yes\tshort')" ] \
+  || fail "answers did not keep the readable choice or truncated the long one into a row: $out"
+printf 'session:\n  file: /a.html\n  status: feedback\nprompts[1]{tag,text,prompt}:\n  "choice","odd","Context data: {\\"schema\\":\\"fm-bearings-answer.v1\\",\\"question\\":\\"sample-odd-call\\",\\"selection\\":\\"not a slug\\",\\"note\\":\\"\\"}"\n' > "$READ"
+choice_rows_rc answers
+[ "$rc" -eq 3 ] || fail "answers exited $rc after dropping a choice whose selection it could not carry"
+[ -z "$out" ] || fail "answers emitted a row for a selection it could not carry: $out"
+printf 'session:\n  file: /a.html\n  status: feedback\nprompts[1]{tag,text,prompt}:\n  "choice","long","Context data: {\\"schema\\":\\"fm-bearings-answer.v1\\",\\"question\\":\\"sample-long-call\\",\\"selection\\":\\"reconcile\\",\\"note\\":\\"%s\\"}"\n' "$long_note" > "$READ"
+choice_rows_rc reconciles
+[ "$rc" -eq 3 ] || fail "reconciles exited $rc after dropping a request whose note it could not carry"
+[ -z "$out" ] || fail "reconciles emitted a row for a request whose note it could not carry: $out"
+printf 'session:\n  file: /a.html\n  status: feedback\nprompts[3]{tag,text,prompt}:\n  "note","plain","Context data: {\\"schema\\":\\"fm-bearings-answer.v1\\",\\"question\\":\\"sample-tag-call\\",\\"selection\\":\\"not a slug\\",\\"note\\":\\"\\"}"\n  "choice","closed","Context data: {\\"schema\\":\\"fm-bearings-answer.v1\\",\\"question\\":\\"sample-close-call\\",\\"selection\\":\\"C1.ok\\",\\"note\\":\\"\\",\\"close\\":\\"later\\"}"\n  "choice","old","Context data: {\\"question\\":\\"sample-old-call\\",\\"answer\\":\\"reconcile\\"}"\n' > "$READ"
+choice_rows_rc answers
+[ "$rc" -eq 0 ] || fail "answers exited $rc on rows it deliberately skips"
+[ -z "$out" ] || fail "answers emitted a row for a deliberately skipped choice: $out"
+pass "answers and reconciles flag a choice they cannot carry instead of dropping it silently"
 printf 'session:\n  file: /a.html\n  status: feedback\nprompts[2]:\n  - tag: choice\n    text: "first"\n  oops\n' > "$READ"
 out=$(read_out) || true
 assert_contains "$out" "complete: no" "a list-form capture with an unreadable line was certified complete"
