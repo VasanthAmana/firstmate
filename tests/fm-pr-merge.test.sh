@@ -189,9 +189,9 @@ case "${1:-} ${2:-}" in
         fi
         if [ -f "${FM_TEST_AWAY_RECORD_AFTER_VIEW:-}" ]; then
           if [ -s "${FM_TEST_AWAY_RECORD_AFTER_VIEW}" ]; then
-            cp "$FM_TEST_AWAY_RECORD_AFTER_VIEW" "$FM_STATE_OVERRIDE/.afk-contract"
+            cp "$FM_TEST_AWAY_RECORD_AFTER_VIEW" "${FM_TEST_AWAY_RECORD_STATE:-$FM_STATE_OVERRIDE}/.afk-contract"
           else
-            rm -f "$FM_STATE_OVERRIDE/.afk-contract"
+            rm -f "${FM_TEST_AWAY_RECORD_STATE:-$FM_STATE_OVERRIDE}/.afk-contract"
           fi
         fi
         exit 0
@@ -2470,12 +2470,15 @@ test_secondmate_merge_refuses_what_the_parent_cannot_route() {
   pass "a secondmate merge is refused unless the registry routes to that secondmate's own home"
 }
 
-# The owning home cannot see this home's away record or supervision actor, so
-# a merge routed there could not honor them: both are refused here instead.
-test_secondmate_merge_is_attended_main_only() {
-  local case_dir rc url
+# The owning home cannot see this home's away record, so the routed merge
+# carries that authority there explicitly: the owning home's own guarded merge
+# then applies the away rules main-home merges meet, holding the parent's own
+# record lock across the forge call, and the supervision branch may route it
+# exactly when it may merge a main-home PR.
+test_secondmate_merge_carries_the_parent_away_authority() {
+  local case_dir rc url mutate
   url=https://github.com/example/repo/pull/74
-  case_dir=$(make_parent_case secondmate-merge-attended)
+  case_dir=$(make_parent_case secondmate-merge-away)
   add_gh_mocks "$case_dir" 7474747474747474747474747474747474747474
   : >"$case_dir/gh-axi.log"
 
@@ -2484,19 +2487,198 @@ test_secondmate_merge_is_attended_main_only() {
     >"$case_dir/stdout" 2>"$case_dir/stderr"
   rc=$?
   set -e
-  expect_code 6 "$rc" "secondmate-merge-attended: the supervision branch should be refused"
+  expect_code 6 "$rc" "secondmate-merge-away: an attended supervision branch should be refused"
+  [ ! -s "$case_dir/gh.log" ] || fail "secondmate-merge-away: a refused branch merge read the forge"
 
   FM_HOME="$case_dir/parent" FM_STATE_OVERRIDE="$case_dir/parent/state" \
-    "$ROOT/bin/fm-afk-contract.sh" enter --words 'back at six' >/dev/null
+    "$ROOT/bin/fm-afk-contract.sh" enter --words 'merge green PRs; back at six' >/dev/null
+
+  set +e
+  run_parent_merge "$case_dir" --secondmate mate-x task-x1 "$url" --allow-red ci \
+    >"$case_dir/stdout" 2>"$case_dir/stderr"
+  rc=$?
+  set -e
+  expect_code 2 "$rc" "secondmate-merge-away: --allow-red should stay attended-only under the parent's record"
+  assert_grep '--allow-red is attended-only' "$case_dir/stderr" \
+    "secondmate-merge-away: the waiver refusal did not name attended-only"
+  set +e
+  run_parent_merge "$case_dir" --secondmate mate-x task-x1 "$url" --allow-missing ci \
+    >"$case_dir/stdout" 2>"$case_dir/stderr"
+  rc=$?
+  set -e
+  expect_code 2 "$rc" "secondmate-merge-away: --allow-missing should stay attended-only under the parent's record"
+  assert_grep '--allow-missing is attended-only' "$case_dir/stderr" \
+    "secondmate-merge-away: the missing-check waiver refusal did not name attended-only"
+  set +e
+  run_parent_merge "$case_dir" --secondmate mate-x task-x1 "$url" --attended-override -- --auto \
+    >"$case_dir/stdout" 2>"$case_dir/stderr"
+  rc=$?
+  set -e
+  expect_code 2 "$rc" "secondmate-merge-away: --auto should stay attended-only under the parent's record"
+  assert_grep '--auto is attended-only' "$case_dir/stderr" \
+    "secondmate-merge-away: the auto-merge refusal did not name attended-only"
+  assert_no_grep 'pr merge' "$case_dir/gh.log" "secondmate-merge-away: a refused routed merge reached the forge"
+
+  # The captain's return, attempted from inside the forge call, must wait on
+  # the parent's own record lock, which the owning home holds for that call.
+  mutate=$(away_change_script "$case_dir" archive-parent-at-merge <<SH
+FM_HOME="$case_dir/parent" FM_STATE_OVERRIDE="$case_dir/parent/state" "\$CONTRACT" archive
+SH
+  )
+  export FM_TEST_AWAY_MUTATE_AT_MERGE="$mutate"
   set +e
   run_parent_merge "$case_dir" --secondmate mate-x task-x1 "$url" \
     >"$case_dir/stdout" 2>"$case_dir/stderr"
   rc=$?
   set -e
-  expect_code 1 "$rc" "secondmate-merge-attended: a merge under this home's away record should be refused"
-  assert_grep 'away' "$case_dir/stderr" "secondmate-merge-attended: the away refusal did not say why"
-  [ ! -s "$case_dir/gh.log" ] || fail "secondmate-merge-attended: a refused routed merge read the forge"
-  pass "a routed secondmate merge is attended and main-only, since the owning home cannot see this home's posture"
+  unset FM_TEST_AWAY_MUTATE_AT_MERGE
+  expect_code 0 "$rc" "secondmate-merge-away: a green routed merge should land under the parent's away record: $(cat "$case_dir/stderr")"
+  assert_logged_gh_merge "$case_dir" 74 example/repo --squash
+  [ "$(cat "$case_dir/away-mutate-rc" 2>/dev/null || true)" != 0 ] \
+    || fail "secondmate-merge-away: the parent's record was archived inside the owning home's merge"
+  assert_grep 'locked by live process' "$case_dir/away-mutate-output" \
+    "secondmate-merge-away: the refused archive did not name the live holder"
+  [ "$(sed -n 6p "$case_dir/home/state/task-x1.merge-authority" 2>/dev/null || true)" = away ] \
+    || fail "secondmate-merge-away: the owning home did not record away authority: $(cat "$case_dir/home/state/task-x1.merge-authority" 2>/dev/null || true)"
+  assert_grep "done [key=merged-task-x1]: merged task-x1 $url away" \
+    <(sed -E 's/ \[at=[0-9]+\]//' "$case_dir/parent/state/mate-x.status") \
+    "secondmate-merge-away: the landed merge did not come back tagged away"
+  FM_HOME="$case_dir/parent" FM_STATE_OVERRIDE="$case_dir/parent/state" \
+    "$ROOT/bin/fm-afk-contract.sh" archive >/dev/null \
+    || fail "secondmate-merge-away: the parent's record stayed locked after the merge"
+
+  case_dir=$(make_parent_case secondmate-merge-away-branch)
+  add_gh_mocks "$case_dir" 7474747474747474747474747474747474747474
+  : >"$case_dir/gh-axi.log"
+  FM_HOME="$case_dir/parent" FM_STATE_OVERRIDE="$case_dir/parent/state" \
+    "$ROOT/bin/fm-afk-contract.sh" enter --words 'merge green PRs' >/dev/null
+  FM_SUPERVISION_ACTOR=branch run_parent_merge "$case_dir" --secondmate mate-x task-x1 "$url" \
+    >"$case_dir/stdout" 2>"$case_dir/stderr" \
+    || fail "secondmate-merge-away-branch: the supervision branch should route a green merge under the record: $(cat "$case_dir/stderr")"
+  assert_grep 'main is parked' "$case_dir/stderr" \
+    "secondmate-merge-away-branch: the relocation note was not printed"
+  assert_logged_gh_merge "$case_dir" 74 example/repo --squash
+  pass "a routed secondmate merge carries the parent's away authority into the owning home's guarded merge"
+}
+
+# Away authority in the owning home comes only from a parent: a local home
+# proves it against its bound parent's live record and refuses without one, and
+# a home with no parent binding refuses the claim outright.
+test_owning_home_refuses_an_unbacked_parent_away_claim() {
+  local case_dir rc url
+  url=https://github.com/example/repo/pull/76
+  case_dir=$(make_parent_case secondmate-unbacked-away)
+  add_gh_mocks "$case_dir" 7676767676767676767676767676767676767676
+  : >"$case_dir/gh-axi.log"
+
+  set +e
+  FM_TEST_HOME="$case_dir/home" FM_TEST_STATE="$case_dir/home/state" \
+    run_pr_merge "$case_dir" --parent-away-authority task-x1 "$url" \
+    >"$case_dir/stdout" 2>"$case_dir/stderr"
+  rc=$?
+  set -e
+  expect_code 1 "$rc" "secondmate-unbacked-away: a claim with no parent away record should be refused"
+  assert_grep "parent home's away record" "$case_dir/stderr" \
+    "secondmate-unbacked-away: the refusal did not name the missing parent record"
+  assert_no_grep 'pr merge' "$case_dir/gh.log" "secondmate-unbacked-away: an unbacked claim reached the forge"
+
+  # The record lapsing during the owning home's preflight is the same absence.
+  FM_HOME="$case_dir/parent" FM_STATE_OVERRIDE="$case_dir/parent/state" \
+    "$ROOT/bin/fm-afk-contract.sh" enter --words 'merge green PRs' >/dev/null
+  : >"$case_dir/away-record-after-view"
+  set +e
+  FM_TEST_AWAY_RECORD_STATE="$case_dir/parent/state" run_parent_merge "$case_dir" \
+    --secondmate mate-x task-x1 "$url" >"$case_dir/stdout" 2>"$case_dir/stderr"
+  rc=$?
+  set -e
+  expect_code 1 "$rc" "secondmate-unbacked-away: a parent record archived during preflight should refuse"
+  assert_grep 'pr view' "$case_dir/gh.log" "secondmate-unbacked-away: the forge preflight never ran"
+  assert_no_grep 'pr merge' "$case_dir/gh.log" \
+    "secondmate-unbacked-away: the merge ran after the parent's record was archived"
+  rm -f "$case_dir/away-record-after-view"
+
+  case_dir=$(make_case main-home-away-claim)
+  mkdir -p "$case_dir/wt" "$case_dir/home"
+  add_gh_mocks "$case_dir" 7676767676767676767676767676767676767676
+  set +e
+  run_pr_merge "$case_dir" --parent-away-authority task-x1 "$url" \
+    >"$case_dir/stdout" 2>"$case_dir/stderr"
+  rc=$?
+  set -e
+  expect_code 1 "$rc" "main-home-away-claim: a home with no parent binding should refuse the claim"
+  assert_grep 'parent binding' "$case_dir/stderr" \
+    "main-home-away-claim: the refusal did not name the missing binding"
+  [ ! -s "$case_dir/gh.log" ] || fail "main-home-away-claim: an unbound claim read the forge"
+
+  set +e
+  run_pr_merge "$case_dir" --parent-away-authority --secondmate mate-x task-x1 "$url" \
+    >"$case_dir/stdout" 2>"$case_dir/stderr"
+  rc=$?
+  set -e
+  expect_code 2 "$rc" "main-home-away-claim: a routed merge must not be routed again"
+  pass "an owning home honors away authority only from its bound parent's live record"
+}
+
+# A remote owning home cannot read the parent's record, so the parent holds
+# that record's lock across the synchronous transport call and passes its
+# authority explicitly; the remote home then applies the away rules.
+test_remote_secondmate_merge_carries_the_parent_away_authority() {
+  local case_dir rc url
+  url=https://github.com/example/repo/pull/77
+  case_dir=$(make_parent_case remote-secondmate-away)
+  printf -- '- mate-r - Owns the gateway (host: mate-host; root: /srv/fm; home: /srv/mate-home; scope: gateway work; projects: alpha; added 2026-09-22)\n' \
+    >"$case_dir/parent/data/secondmates.md"
+  cat >"$case_dir/fakebin/fake-ssh" <<'SH'
+#!/usr/bin/env bash
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    -o) shift 2 ;;
+    --) shift; break ;;
+    *) exit 90 ;;
+  esac
+done
+if [ -e "$FM_TEST_PARENT_STATE/.afk-contract.lock" ] || [ -L "$FM_TEST_PARENT_STATE/.afk-contract.lock" ]; then
+  printf 'lock=held\n' >"$FM_TEST_SSH_LOG"
+else
+  printf 'lock=free\n' >"$FM_TEST_SSH_LOG"
+fi
+{ printf "%s" "$6" | base64 --decode 2>/dev/null || printf "%s" "$6" | base64 -D; } \
+  | tr '\0' '\n' >>"$FM_TEST_SSH_LOG"
+exit 0
+SH
+  chmod +x "$case_dir/fakebin/fake-ssh"
+  FM_HOME="$case_dir/parent" FM_STATE_OVERRIDE="$case_dir/parent/state" \
+    "$ROOT/bin/fm-afk-contract.sh" enter --words 'merge green PRs' >/dev/null
+
+  FM_SUPERVISION_ACTOR=branch FM_SSH_BIN="$case_dir/fakebin/fake-ssh" FM_TEST_SSH_LOG="$case_dir/ssh.log" \
+    FM_TEST_PARENT_STATE="$case_dir/parent/state" \
+    run_parent_merge "$case_dir" --secondmate mate-r task-x1 "$url" \
+    >"$case_dir/stdout" 2>"$case_dir/stderr" \
+    || fail "remote-secondmate-away: the routed merge should run under the record: $(cat "$case_dir/stderr")"
+  [ "$(cat "$case_dir/ssh.log")" = "$(printf '%s\n' lock=held fm-pr-merge.sh --parent-away-authority task-x1 "$url")" ] \
+    || fail "remote-secondmate-away: the owning home did not get the away authority under the parent's lock: $(cat "$case_dir/ssh.log")"
+  FM_HOME="$case_dir/parent" FM_STATE_OVERRIDE="$case_dir/parent/state" \
+    "$ROOT/bin/fm-afk-contract.sh" archive >/dev/null \
+    || fail "remote-secondmate-away: the parent's record stayed locked after the routed merge"
+
+  # The owning home's side: on a remote parent's word the away rules apply.
+  case_dir=$(make_home_case remote-owning-home-away remote)
+  add_gh_mocks "$case_dir" 7777777777777777777777777777777777777777
+  : >"$case_dir/gh-axi.log"
+  set +e
+  run_pr_merge "$case_dir" --parent-away-authority task-x1 "$url" --allow-red ci \
+    >"$case_dir/stdout" 2>"$case_dir/stderr"
+  rc=$?
+  set -e
+  expect_code 2 "$rc" "remote-owning-home-away: --allow-red should be refused on the parent's away word"
+  assert_no_grep 'pr merge' "$case_dir/gh.log" "remote-owning-home-away: a waived merge reached the forge"
+  run_pr_merge "$case_dir" --parent-away-authority task-x1 "$url" \
+    >"$case_dir/stdout" 2>"$case_dir/stderr" \
+    || fail "remote-owning-home-away: a green merge should land on the parent's away word: $(cat "$case_dir/stderr")"
+  assert_logged_gh_merge "$case_dir" 77 example/repo --squash
+  [ "$(sed -n 6p "$case_dir/state/task-x1.merge-authority" 2>/dev/null || true)" = away ] \
+    || fail "remote-owning-home-away: the owning home did not record away authority"
+  pass "a remote secondmate merge carries the parent's away authority under the parent's record lock"
 }
 
 test_remote_secondmate_merge_runs_in_the_owning_home() {
@@ -4038,7 +4220,9 @@ test_secondmate_without_parent_binding_is_loud
 test_parent_merges_a_secondmate_child_pr_through_the_owning_home
 test_secondmate_merge_keeps_the_owning_home_guards
 test_secondmate_merge_refuses_what_the_parent_cannot_route
-test_secondmate_merge_is_attended_main_only
+test_secondmate_merge_carries_the_parent_away_authority
+test_owning_home_refuses_an_unbacked_parent_away_claim
+test_remote_secondmate_merge_carries_the_parent_away_authority
 test_remote_secondmate_merge_runs_in_the_owning_home
 test_absent_backlog_still_merges
 test_unreadable_backlog_refuses_the_merge
