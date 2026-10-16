@@ -135,7 +135,7 @@
 # explicit captain instruction and never skips the live green check, the
 # away-record read, or a captain hold.
 #
-# Usage: fm-pr-merge.sh [--secondmate <secondmate-id>] <task-id> <pr-url> [--attended-override] [--allow-red <check-name>] [--allow-missing <check-name>] [-- <extra forge merge args>]
+# Usage: fm-pr-merge.sh [--secondmate <secondmate-id> | --parent-away-authority] <task-id> <pr-url> [--attended-override] [--allow-red <check-name>] [--allow-missing <check-name>] [-- <extra forge merge args>]
 #
 # A task a secondmate spawned has its record only in that secondmate's home, so
 # this home refuses it as task metadata unavailable. --secondmate, given first,
@@ -145,9 +145,23 @@
 # every guard above, that home's captain holds, its recorded outcome, and its
 # upward report all apply there unchanged. The secondmate must have exactly one
 # record in this home's data/secondmates.md, and a local home must pass the
-# shared seeded-home checks. That home cannot see this home's away record or
-# supervision actor, so the routed merge is attended and main-only: it is
-# refused for the supervision branch and while this home's away record exists.
+# shared seeded-home checks. That home cannot see this home's away record, so
+# while one exists this home passes its away authority there explicitly as a
+# leading --parent-away-authority, and the owning home's merge then meets the
+# away rules above: synchronous only, green at the live head, no --allow-red or
+# --allow-missing, no queue it cannot prove absent, and away recorded as the
+# merge authority. A local owning home proves that authority against the live
+# away record of the parent its .fm-secondmate-parent binding names, reading it
+# and holding its lock exactly as this home's own record is read and held for a
+# main-home merge, so a lapsed parent record refuses the merge and an owning
+# home cannot assert away authority its parent does not hold. A remote owning
+# home cannot reach that record, so this home holds its own record's lock
+# across the synchronous transport call and reads the posture under it, and the
+# remote home applies the away rules on this home's word; the flag only narrows
+# what that merge may do and labels its outcome. A home with no parent binding
+# refuses the flag. The supervision branch may route the merge exactly when it
+# may merge a main-home PR, and the owning home never inherits this home's
+# supervision actor; a quiet record or none routes an attended merge.
 # A remote transport failure (exit 255) is reported as an unknown outcome to
 # reconcile against the forge, never retried here.
 #
@@ -196,11 +210,22 @@ if [ "${1:-}" = --secondmate ]; then
   . "$SCRIPT_DIR/fm-wake-lib.sh"
   # shellcheck source=bin/fm-lease-lib.sh
   . "$SCRIPT_DIR/fm-lease-lib.sh"
-  fm_lease_forbid_branch "PR merge (fm-pr-merge --secondmate)"
-  if fm_afk_contract_away_present "$STATE"; then
-    echo "error: a secondmate's PR merge is refused while this home's away record exists: the secondmate's home cannot see that record and would merge as attended; nothing was merged" >&2
-    exit 1
-  fi
+  fm_lease_forbid_branch "PR merge (fm-pr-merge --secondmate)" --away-relocated
+  # The away authority this home passes to the owning home, read from this
+  # home's own record: an away record carries it, and a quiet one or none
+  # routes an attended merge. An unreadable record refuses.
+  routed_away_authority() {
+    ROUTED_AWAY_ARGS=()
+    fm_afk_contract_present "$STATE" || return 0
+    if ! FM_HOME="$FM_HOME" FM_STATE_OVERRIDE="$STATE" \
+      "$SCRIPT_DIR/fm-afk-contract.sh" validate >/dev/null 2>&1; then
+      echo "error: a secondmate's PR merge is refused - this home's away-posture record could not be read; nothing was merged" >&2
+      return 1
+    fi
+    if fm_afk_contract_away_present "$STATE"; then
+      ROUTED_AWAY_ARGS=(--parent-away-authority)
+    fi
+  }
   # shellcheck source=bin/fm-ff-lib.sh
   . "$SCRIPT_DIR/fm-ff-lib.sh"
   if ! secondmate_registry_line_for_id "${FM_DATA_OVERRIDE:-$FM_HOME/data}/secondmates.md" "$SECONDMATE_ID"; then
@@ -208,8 +233,18 @@ if [ "${1:-}" = --secondmate ]; then
     exit 1
   fi
   if [ "$SECONDMATE_REGISTRY_REMOTE" -eq 1 ]; then
+    # A remote home cannot read this home's record, so this home holds the
+    # record's lock across the synchronous call and reads its posture under it.
+    if ! fm_afk_contract_lock_hold "$STATE"; then
+      echo "error: a secondmate's PR merge is refused - this home's away-posture record could not be locked for the merge; nothing was merged" >&2
+      exit 1
+    fi
+    trap 'fm_afk_contract_lock_release || true' EXIT
+    fm_lease_forbid_branch "PR merge (fm-pr-merge --secondmate)" --away-relocated
+    routed_away_authority || exit 1
     SECONDMATE_RC=0
-    "$SCRIPT_DIR/fm-on.sh" "$SECONDMATE_ID" fm-pr-merge.sh "$@" || SECONDMATE_RC=$?
+    "$SCRIPT_DIR/fm-on.sh" "$SECONDMATE_ID" fm-pr-merge.sh \
+      "${ROUTED_AWAY_ARGS[@]+"${ROUTED_AWAY_ARGS[@]}"}" "$@" || SECONDMATE_RC=$?
     if [ "$SECONDMATE_RC" -eq 255 ]; then
       echo "error: the merge outcome is unknown: the connection to secondmate $SECONDMATE_ID's host ended before its result came back; read the PR's state before retrying" >&2
     fi
@@ -219,14 +254,50 @@ if [ "${1:-}" = --secondmate ]; then
     echo "error: secondmate $SECONDMATE_ID's registered home is unusable: $VALIDATION_ERROR; nothing was merged" >&2
     exit 1
   fi
-  # Every override is restated so none of this home's state leaks into the run.
-  exec env \
+  routed_away_authority || exit 1
+  if [ "${#ROUTED_AWAY_ARGS[@]}" -eq 0 ]; then
+    fm_lease_forbid_branch "PR merge (fm-pr-merge --secondmate)"
+  fi
+  # Every override is restated so none of this home's state leaks into the run,
+  # including its supervision actor, which this home's own partition has judged.
+  exec env -u FM_SUPERVISION_ACTOR \
     FM_ROOT_OVERRIDE="$FM_ROOT" \
     FM_HOME="$VALIDATED_HOME" \
     FM_STATE_OVERRIDE="$VALIDATED_HOME/state" \
     FM_DATA_OVERRIDE="$VALIDATED_HOME/data" \
     FM_CONFIG_OVERRIDE="$VALIDATED_HOME/config" \
-    "$SCRIPT_DIR/fm-pr-merge.sh" "$@"
+    "$SCRIPT_DIR/fm-pr-merge.sh" "${ROUTED_AWAY_ARGS[@]+"${ROUTED_AWAY_ARGS[@]}"}" "$@"
+fi
+
+# A merge a parent home routed here under its own away record (the
+# --secondmate paragraph in the header). A local home proves that authority
+# against its bound parent's live record, which then stands in for this home's
+# own; a remote home cannot reach that record and applies the away rules on the
+# parent's word. A home with no parent binding refuses the claim.
+PARENT_AWAY_AUTHORITY=false
+PARENT_AWAY_WORD=false
+AWAY_HOME=$FM_HOME
+AWAY_STATE=$STATE
+if [ "${1:-}" = --parent-away-authority ]; then
+  shift
+  if [ "${1:-}" = --secondmate ]; then
+    echo "error: a merge routed under a parent's away authority cannot be routed again" >&2
+    exit 2
+  fi
+  # shellcheck source=bin/fm-secondmate-parent-lib.sh
+  . "$SCRIPT_DIR/fm-secondmate-parent-lib.sh"
+  if [ ! -f "$FM_HOME/.fm-secondmate-home" ] \
+    || ! fm_secondmate_parent_record_parse "$FM_HOME/.fm-secondmate-parent"; then
+    echo "error: PR merge refused - a parent's away authority was claimed, but this home has no readable secondmate identity and parent binding (.fm-secondmate-home, .fm-secondmate-parent); nothing was merged" >&2
+    exit 1
+  fi
+  PARENT_AWAY_AUTHORITY=true
+  if [ "$FM_SECONDMATE_PARENT_ROUTE" = local ]; then
+    AWAY_HOME=$FM_SECONDMATE_PARENT_HOME
+    AWAY_STATE=$AWAY_HOME/state
+  else
+    PARENT_AWAY_WORD=true
+  fi
 fi
 
 if [ "$#" -lt 2 ]; then
@@ -1164,8 +1235,9 @@ FM_PR_MERGE_AUTHORITY=
 # resolved here. An unreadable record refuses rather than being skipped.
 resolve_merge_authority() {
   FM_PR_MERGE_AUTHORITY=
-  if fm_merge_authority_resolve "$FM_HOME" "$STATE" "$META" "$ID"; then
+  if fm_merge_authority_resolve "$AWAY_HOME" "$AWAY_STATE" "$META" "$ID"; then
     FM_PR_MERGE_AUTHORITY=$FM_MERGE_AUTHORITY
+    [ "$PARENT_AWAY_WORD" != true ] || FM_PR_MERGE_AUTHORITY=away
     return 0
   fi
   echo "error: PR merge refused - the away-posture record could not be read; nothing was merged" >&2
@@ -1180,14 +1252,14 @@ resolve_merge_authority() {
 # and it always takes them in that order; the away-record side takes only its own
 # lock, so the pair cannot deadlock.
 hold_away_record_for_merge() {
-  fm_afk_contract_lock_hold "$STATE" && return 0
+  fm_afk_contract_lock_hold "$AWAY_STATE" && return 0
   echo "error: PR merge refused - the away-posture record could not be locked for the merge; nothing was merged" >&2
   return 1
 }
 
 require_current_away_authority() {
   FM_PR_AWAY_POSTURE=false
-  if fm_afk_contract_away_present "$STATE"; then
+  if [ "$PARENT_AWAY_WORD" = true ] || fm_afk_contract_away_present "$AWAY_STATE"; then
     FM_PR_AWAY_POSTURE=true
     if [ "$PROVIDER" = github ] && [ "$FM_PR_GITHUB_AUTO_REQUESTED" = true ]; then
       echo "error: --auto is attended-only; while the away-posture record exists only a synchronous merge may run under its authority lock" >&2
@@ -1198,6 +1270,9 @@ require_current_away_authority() {
       echo "error: GitLab auto-merge is attended-only; while the away-posture record exists only an immediate merge may run under its authority lock" >&2
       return 2
     fi
+  elif [ "$PARENT_AWAY_AUTHORITY" = true ]; then
+    echo "error: PR merge refused - it was routed under the parent home's away authority, but the parent home's away record no longer exists; nothing was merged" >&2
+    return 1
   fi
   fm_lease_forbid_branch "PR merge (fm-pr-merge)" --away-relocated
   resolve_merge_authority || return 1
