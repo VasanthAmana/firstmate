@@ -2561,6 +2561,52 @@ SH
   pass "a routed secondmate merge carries the parent's away authority into the owning home's guarded merge"
 }
 
+# The captain's return can archive the parent's record after the supervision
+# branch passed the actor check but before the route read its authority. The
+# route then carries none, so the branch must be refused rather than hand the
+# owning home an attended merge it never performs.
+test_secondmate_route_refuses_the_branch_when_the_record_lapses() {
+  local case_dir rc url racebin
+  url=https://github.com/example/repo/pull/78
+  case_dir=$(make_parent_case secondmate-route-lapse)
+  add_gh_mocks "$case_dir" 7878787878787878787878787878787878787878
+  : >"$case_dir/gh-axi.log"
+  racebin="$case_dir/racebin/bin"
+  mkdir -p "$racebin"
+  cp -R "$ROOT/bin/." "$racebin/"
+  cat >>"$racebin/fm-afk-contract.sh" <<'SH'
+fm_test_rc=$?
+if [ "${BASH_SOURCE[0]}" = "${0}" ]; then
+  if [ "${1:-}" = mode ] && [ -f "${FM_TEST_ARCHIVE_AFTER_MODE:-}" ]; then
+    rm -f "$FM_TEST_ARCHIVE_AFTER_MODE"
+    "$FM_TEST_ROOT/bin/fm-afk-contract.sh" archive >/dev/null
+  fi
+  exit "$fm_test_rc"
+fi
+SH
+  FM_HOME="$case_dir/parent" FM_STATE_OVERRIDE="$case_dir/parent/state" \
+    "$ROOT/bin/fm-afk-contract.sh" enter --words 'merge green PRs' >/dev/null
+  : >"$case_dir/archive-after-mode"
+
+  set +e
+  FM_SUPERVISION_ACTOR=branch FM_TEST_ARCHIVE_AFTER_MODE="$case_dir/archive-after-mode" \
+    PR_MERGE="$racebin/fm-pr-merge.sh" \
+    run_parent_merge "$case_dir" --secondmate mate-x task-x1 "$url" \
+    >"$case_dir/stdout" 2>"$case_dir/stderr"
+  rc=$?
+  set -e
+  [ ! -e "$case_dir/archive-after-mode" ] \
+    || fail "secondmate-route-lapse: the record was never archived after the actor check"
+  [ ! -f "$case_dir/parent/state/.afk-contract" ] \
+    || fail "secondmate-route-lapse: the parent's record is still present"
+  expect_code 6 "$rc" "secondmate-route-lapse: the branch should be refused once the record lapsed: $(cat "$case_dir/stderr")"
+  assert_grep 'supervision branch never performs this action' "$case_dir/stderr" \
+    "secondmate-route-lapse: the refusal did not name the role partition"
+  assert_no_grep 'pr merge' "$case_dir/gh.log" \
+    "secondmate-route-lapse: the branch handed off an attended merge that reached the forge"
+  pass "a secondmate route refuses the supervision branch when the away record lapses before routing"
+}
+
 # Away authority in the owning home comes only from a parent: a local home
 # proves it against its bound parent's live record and refuses without one, and
 # a home with no parent binding refuses the claim outright.
@@ -4221,6 +4267,7 @@ test_parent_merges_a_secondmate_child_pr_through_the_owning_home
 test_secondmate_merge_keeps_the_owning_home_guards
 test_secondmate_merge_refuses_what_the_parent_cannot_route
 test_secondmate_merge_carries_the_parent_away_authority
+test_secondmate_route_refuses_the_branch_when_the_record_lapses
 test_owning_home_refuses_an_unbacked_parent_away_claim
 test_remote_secondmate_merge_carries_the_parent_away_authority
 test_remote_secondmate_merge_runs_in_the_owning_home

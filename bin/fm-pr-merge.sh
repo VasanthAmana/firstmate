@@ -255,6 +255,9 @@ if [ "${1:-}" = --secondmate ]; then
     exit 1
   fi
   routed_away_authority || exit 1
+  if [ "${#ROUTED_AWAY_ARGS[@]}" -eq 0 ]; then
+    fm_lease_forbid_branch "PR merge (fm-pr-merge --secondmate)"
+  fi
   # Every override is restated so none of this home's state leaks into the run,
   # including its supervision actor, which this home's own partition has judged.
   exec env -u FM_SUPERVISION_ACTOR \
