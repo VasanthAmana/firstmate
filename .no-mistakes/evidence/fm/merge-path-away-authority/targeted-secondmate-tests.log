@@ -1,0 +1,9 @@
+ok - a parent merges a secondmate child's PR through the owning home's own guarded path
+ok - a secondmate child's PR still meets every guard of the owning home's merge
+ok - a secondmate merge is refused unless the registry routes to that secondmate's own home
+ok - a routed secondmate merge carries the parent's away authority into the owning home's guarded merge
+ok - a secondmate route refuses the supervision branch when the away record lapses before routing
+ok - an owning home honors away authority only from its bound parent's live record
+ok - a remote secondmate merge carries the parent's away authority under the parent's record lock
+ok - a remote secondmate child's PR is merged by that home's own guarded path on its host
+ALL-DONE

@@ -1,0 +1,35 @@
+===== BASE 9664eed7 =====
+$ fm-pr-merge.sh --secondmate mate-x task-x1 https://github.com/example/repo/pull/74 --allow-red ci   # parent home away
+error: a secondmate's PR merge is refused while this home's away record exists: the secondmate's home cannot see that record and would merge as attended; nothing was merged
+exit=1
+$ fm-pr-merge.sh --secondmate mate-x task-x1 https://github.com/example/repo/pull/74   # parent home away
+error: a secondmate's PR merge is refused while this home's away record exists: the secondmate's home cannot see that record and would merge as attended; nothing was merged
+exit=1
+-- forge merge calls:
+(none)
+-- owning home merge-authority record:
+(none)
+-- parent status from mate-x:
+(none)
+
+===== HEAD 255515ac =====
+$ fm-pr-merge.sh --secondmate mate-x task-x1 https://github.com/example/repo/pull/74 --allow-red ci   # parent home away
+error: --allow-red is attended-only; while the away-posture record exists the green check is absolute
+exit=2
+$ fm-pr-merge.sh --secondmate mate-x task-x1 https://github.com/example/repo/pull/74   # parent home away
+armed: state/task-x1.check.sh
+verified: https://github.com/example/repo/pull/74 is open and mergeable, with every unwaived required check reported and every unwaived check green at head 7474747474747474747474747474747474747474
+verified: https://github.com/example/repo/pull/74 is merged (state=MERGED, merged=true, isInMergeQueue=false)
+exit=0
+-- forge merge calls:
+pr merge 74 --repo example/repo --match-head-commit 7474747474747474747474747474747474747474 --squash
+-- owning home merge-authority record:
+fm-merge-authority-v1
+github
+github.com
+example/repo
+74
+away
+-- parent status from mate-x:
+done [key=child-pr-task-x1] [at=1792135016]: child task-x1 PR ready: https://github.com/example/repo/pull/74 mode=no-mistakes
+done [key=merged-task-x1] [at=1792135017]: merged task-x1 https://github.com/example/repo/pull/74 away

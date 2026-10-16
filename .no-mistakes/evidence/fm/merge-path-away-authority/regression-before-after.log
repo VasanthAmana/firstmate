@@ -1,0 +1,8 @@
+== bin/fm-pr-merge.sh at 176a7889
+●  watcher supervision needs Stop-owned automatic recovery; inspect the hook registration and startup status before ending the turn.
+●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+verified: https://github.com/example/repo/pull/78 is open and mergeable, with every unwaived required check reported and every unwaived check green at head 7878787878787878787878787878787878787878: expected exit 6, got 0
+ok - a routed secondmate merge carries the parent's away authority into the owning home's guarded merge
+== bin/fm-pr-merge.sh at 9664eed7
+not ok - secondmate-route-lapse: the record was never archived after the actor check
+not ok - secondmate-merge-away: --allow-red should stay attended-only under the parent's record: expected exit 2, got 1
