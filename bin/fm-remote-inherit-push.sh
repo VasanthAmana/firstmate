@@ -125,8 +125,7 @@ send_item() {  # <n>
       < /dev/null > "$TMP/item.$n.out" 2> "$TMP/item.$n.err" || rc=$?
   fi
   if [ "$rc" -eq 1 ] && grep -Fxq -- "error: path is not inherited material: $rel" "$TMP/item.$n.err"; then
-    printf '%s\n' "fm-remote-inherit-push: warning: skipped $rel for remote secondmate $ID: the Firstmate code root on that host predates it and does not declare it inherited material, so nothing was written; updating Firstmate on that host converges it" >&2
-    : > "$TMP/item.$n.err"
+    printf '%s\n' "fm-remote-inherit-push: warning: skipped $rel for remote secondmate $ID: the Firstmate code root on that host predates it and does not declare it inherited material, so nothing was written; updating Firstmate on that host converges it" > "$TMP/item.$n.err"
     rc=0
   fi
   printf '%s\n' "$rc" > "$TMP/item.$n.rc.tmp" && mv -f "$TMP/item.$n.rc.tmp" "$TMP/item.$n.rc"

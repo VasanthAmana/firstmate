@@ -678,7 +678,8 @@ sub lavish_list_items {
 sub lavish_result {
   my ($path, $names) = @_;
   open my $fh, "<", $path or return;
-  my ($form, $want, $has_session, $extra, @fields, @body) = ("none", 0, 0, 0);
+  my ($form, $want, $has_session, $extra, $after, @fields, @body) = ("none", 0, 0, 0, 0);
+  my %known = map { $_ => 1 } qw(session prompts feedback artifact_failures next_step dom_snapshot error code help);
   while (my $line = <$fh>) {
     chomp $line;
     if ($form eq "none") {
@@ -686,7 +687,6 @@ sub lavish_result {
       my ($header_count) = $line =~ /^(?:prompts|feedback)\[(\d+)\]/;
       $want = $header_count if defined $header_count;
       if ($line =~ /^([A-Za-z_][A-Za-z0-9_]*)(?:\[[^\]]*\])?(?:\{[^}]*\})?:/) {
-        my %known = map { $_ => 1 } qw(session prompts feedback artifact_failures next_step dom_snapshot error code help);
         if (!$known{$1}) { $form = "unrecognized"; last; }
         $has_session = 1 if $1 eq "session" || $1 eq "error";
       } else {
@@ -706,12 +706,23 @@ sub lavish_result {
       }
       next;
     }
-    last unless $line =~ /^\s/;
-    if ($form eq "table" && @body >= $want) {
-      $extra = 1;
-      last;
+    if (!$after && $line =~ /^\s/) {
+      if ($form eq "table" && @body >= $want) {
+        $extra = 1;
+        last;
+      }
+      push @body, $line;
+      next;
     }
-    push @body, $line;
+    $after = 1;
+    next if $line eq "" || $line =~ /^\s/;
+    if ($line =~ /^([A-Za-z_][A-Za-z0-9_]*)(?:\[[^\]]*\])?(?:\{[^}]*\})?:/
+        && $known{$1} && $1 ne "prompts" && $1 ne "feedback") {
+      $has_session = 1 if $1 eq "session" || $1 eq "error";
+      next;
+    }
+    $extra = 1;
+    last;
   }
   close $fh;
   return ($form, $want, [], 1) if $form eq "unrecognized";
@@ -885,7 +896,7 @@ cmd_choice_rows() {
       push @row, $note if length $note;
       print join("\t", @row), "\n";
     }
-    if ($malformed || @$items != $want || $unreadable) {
+    if ($malformed || @$items != $want || $unreadable || $form eq "unrecognized") {
       print STDERR "error: the result is not fully accounted for: declared $want, parsed ",
         scalar(@$items), ", malformed $malformed\n";
       exit 3;
@@ -997,16 +1008,40 @@ cmd_read() {
         my $comment = defined $f->{prompt} ? $f->{prompt} : "";
         my $body = length $elem ? $elem : $comment;
         emit_body($body);
-        if ($tag eq "choice" && $comment =~ /Context data:\s*(\{.*\})/s) {
-          my $data = eval { decode_json($1) };
-          if (ref($data) eq "HASH") {
-            for my $field (qw(question selection note close)) {
-              next unless exists $data->{$field} && !ref($data->{$field});
+        if ($tag ne "choice") {
+          if (length $comment) {
+            print "prompt:\n";
+            emit_body($comment);
+          }
+          next;
+        }
+        # A choice presents what its Context data carries - the selection AND
+        # the note typed beside it - because the element text is only a label
+        # and a selection without its note is a partial answer. Context data
+        # this reader does not recognize is shown raw rather than dropped.
+        my $data;
+        if ($comment =~ /Context data:\s*(\{.*\})/s) {
+          my $decoded = eval { decode_json($1) };
+          $data = $decoded if ref($decoded) eq "HASH";
+        }
+        if ($data && defined($data->{schema}) && !ref($data->{schema})
+            && $data->{schema} eq "fm-bearings-answer.v1") {
+          for my $field (qw(question selection note close)) {
+            my $value = $data->{$field};
+            next if $field eq "close" && !defined $value;
+            $value = "" unless defined $value && !ref $value;
+            if (length $value) {
               print "$field:\n";
-              emit_body($data->{$field});
+              emit_body($value);
+            } else {
+              print "$field: (none)\n";
             }
           }
-        } elsif ($tag ne "choice" && length $comment) {
+        } elsif ($data && !exists($data->{schema}) && defined($data->{answer})
+            && !ref($data->{answer})) {
+          print "answer:\n";
+          emit_body($data->{answer});
+        } elsif (length $comment) {
           print "prompt:\n";
           emit_body($comment);
         }
