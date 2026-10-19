@@ -562,8 +562,11 @@ write_forgejo_status_json() {
   if [ "$total" = 0 ]; then
     printf '{"state":"","total_count":0,"statuses":[]}\n' > "$file"
   else
+    # Bash 3.2 brace-expands a {a,b} word nested inside "$(...)", so the sed
+    # program is built outside the command substitution.
+    local row='s/.*/{"context":"ci-&","status":"'"$state"'"}/'
     printf '{"state":"%s","total_count":%s,"statuses":[%s]}\n' "$state" "$total" \
-      "$(seq "$total" | sed "s/.*/{\"context\":\"ci-&\",\"status\":\"$state\"}/" | paste -sd, -)" \
+      "$(seq "$total" | sed "$row" | paste -sd, -)" \
       > "$file"
   fi
 }
