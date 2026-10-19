@@ -1,0 +1,33 @@
+=== allowlist order ===
+config/crew-dispatch.json
+config/dispatch-never-send
+config/crew-harness
+config/backlog-backend
+config/backend
+config/herdr-presentation-spaces
+config/herdr-project-groups
+config/startup-memory-budget
+config/trace-context
+config/launch-env-allowlist
+config/claude-permission-mode
+config/keep-ai-trailers
+config/supervision-host-off
+config/firstmate-role
+data/captain-shared.md
+=== fm-remote-inherit-push.sh sm1 7 (stdout+stderr interleaved, JOBS=4) ===
+absent: config/crew-dispatch.json
+fm-remote-inherit-push: warning: skipped config/dispatch-never-send for remote secondmate sm1: the Firstmate code root on that host predates it and does not declare it inherited material, so nothing was written; updating Firstmate on that host converges it
+absent: config/crew-harness
+absent: config/backlog-backend
+absent: config/backend
+absent: config/herdr-presentation-spaces
+absent: config/herdr-project-groups
+absent: config/startup-memory-budget
+absent: config/trace-context
+absent: config/launch-env-allowlist
+absent: config/claude-permission-mode
+absent: config/keep-ai-trailers
+absent: config/supervision-host-off
+absent: config/firstmate-role
+absent: data/captain-shared.md
+exit=0

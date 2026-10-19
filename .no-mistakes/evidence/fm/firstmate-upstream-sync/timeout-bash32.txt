@@ -1,0 +1,5 @@
+bash 3.2.57(1)-release BASHPID=<unset>
+main-shell child: fm_exec_timed 1s sleep 30 -> rc=124 after 1s
+nested subshell: fm_exec_timed 1s sleep 30 -> rc=124 after 1s
+fast command: rc=0 after 0s
+top-level script exec: fm_exec_timed 1s sleep 30 -> rc=124 after 2s

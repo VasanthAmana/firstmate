@@ -1,0 +1,160 @@
+===== input f2.txt
+session:
+  file: /a.html
+  status: feedback
+prompts[4]{tag,text,prompt}:
+  "choice","Option B","Context data: {\"question\":\"deploy-target\",\"answer\":\"staging\"}"
+  "choice","Raw pick","Context data: not json at all"
+  "choice","V1 pick","Context data: {\"schema\":\"fm-bearings-answer.v1\",\"question\":\"sample-call\",\"selection\":\"A1.yes\",\"note\":\"\"}"
+  "div","Some element","please fix this"
+----- read
+SESSION-ENDING MESSAGE: (none)
+
+declared_items: 4
+presented_items: 4
+malformed_items: 0
+complete: yes
+lifecycle: feedback
+session_ended: (unset)
+annotation_count: 4
+captain_message_count: 0
+
+ANNOTATIONS
+ANNOTATION 1 of 4
+element_uid: 
+element_selector: 
+tag: choice
+text:
+| Option B
+answer:
+| staging
+ANNOTATION 2 of 4
+element_uid: 
+element_selector: 
+tag: choice
+text:
+| Raw pick
+prompt:
+| Context data: not json at all
+ANNOTATION 3 of 4
+element_uid: 
+element_selector: 
+tag: choice
+text:
+| V1 pick
+question:
+| sample-call
+selection:
+| A1.yes
+note: (none)
+ANNOTATION 4 of 4
+element_uid: 
+element_selector: 
+tag: div
+text:
+| Some element
+prompt:
+| please fix this
+END ANNOTATIONS
+END LAVISH RESULT (4 of 4)
+[exit 0]
+----- answers
+deploy-target	staging	Option B
+sample-call	A1.yes	V1 pick
+[exit 0]
+----- reconciles
+[exit 0]
+===== input f3.txt
+session:
+  file: /a.html
+  status: feedback
+prompts[1]{tag,text,prompt}:
+  "div","x","hello"
+attachments[1]{name}:
+  "a.png"
+next_step:
+  wait
+----- read
+UNPARSEABLE CAPTURE: this result carries content this reader could not fully account for, so the counts below are NOT the whole round; read the raw capture at /var/folders/qh/9g4nkxyd4_b41v4nz0qpt8b40000gn/T/tmp.HMtzgvJR2r/f3.txt
+unparsed: an unrecognized top-level field attachments
+
+SESSION-ENDING MESSAGE: (none)
+
+declared_items: 1
+presented_items: 1
+malformed_items: 0
+complete: no
+lifecycle: feedback
+session_ended: (unset)
+annotation_count: 1
+captain_message_count: 0
+
+ANNOTATIONS
+ANNOTATION 1 of 1
+element_uid: 
+element_selector: 
+tag: div
+text:
+| x
+prompt:
+| hello
+END ANNOTATIONS
+END LAVISH RESULT (1 of 1)
+[exit 3]
+----- answers
+error: the result is not fully accounted for: declared 1, parsed 1, malformed 0
+[exit 3]
+----- reconciles
+error: the result is not fully accounted for: declared 1, parsed 1, malformed 0
+[exit 3]
+===== input f3ok.txt
+session:
+  file: /a.html
+  status: feedback
+prompts[1]{tag,text,prompt}:
+  "div","x","hello"
+next_step: run lavish-axi poll
+----- read
+SESSION-ENDING MESSAGE: (none)
+
+declared_items: 1
+presented_items: 1
+malformed_items: 0
+complete: yes
+lifecycle: feedback
+session_ended: (unset)
+annotation_count: 1
+captain_message_count: 0
+
+ANNOTATIONS
+ANNOTATION 1 of 1
+element_uid: 
+element_selector: 
+tag: div
+text:
+| x
+prompt:
+| hello
+END ANNOTATIONS
+END LAVISH RESULT (1 of 1)
+[exit 0]
+----- answers
+[exit 0]
+----- reconciles
+[exit 0]
+===== second content block after prompts
+session:
+  status: feedback
+prompts[1]{tag,text,prompt}:
+  "div","x","hello"
+feedback[1]{tag,text,prompt}:
+  "div","y","second block"
+UNPARSEABLE CAPTURE: this result carries content this reader could not fully account for, so the counts below are NOT the whole round; read the raw capture at /var/folders/qh/9g4nkxyd4_b41v4nz0qpt8b40000gn/T/tmp.JwcTRycUvr/dup.txt
+unparsed: the result is not fully accounted for
+
+SESSION-ENDING MESSAGE: (none)
+[exit ]
+complete: no
+read exit 3
+error: the result is not fully accounted for: declared 1, parsed 1, malformed 0
+answers exit 3

@@ -1,0 +1,9 @@
+# fm-remote-inherit-push.sh with the remote predating config/item-c (items take 0.4s, item-c refuses at once)
+unchanged: config/item-a
+unchanged: config/item-b
+fm-remote-inherit-push: warning: skipped config/item-c for remote secondmate sm: the Firstmate code root on that host predates it and does not declare it inherited material, so nothing was written; updating Firstmate on that host converges it
+unchanged: config/item-d
+unchanged: config/item-e
+unchanged: config/item-f
+unchanged: data/captain-shared.md
+[exit 0]

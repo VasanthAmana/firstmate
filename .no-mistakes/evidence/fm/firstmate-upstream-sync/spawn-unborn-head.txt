@@ -1,0 +1,9 @@
+$ git -C <lab>/projects/unborn rev-parse --verify HEAD
+(none: unborn HEAD)
+$ FM_HOME=<lab> bin/fm-spawn.sh unborn-probe-1 <lab>/projects/unborn --mode local-only --yolo off --backend tmux
+fm-gate-refuse: gate agent lifecycle permitted only against lab home <lab>
+error: spawn refused: project <lab>/projects/unborn has no commit yet (unborn HEAD), so there is nothing to branch a worktree from; make one commit in the project, for example 'git -C <lab>/projects/unborn commit --allow-empty -m "chore: initial commit"', then spawn again
+exit=1 elapsed=0s
+task meta published: none
+commits in project after refusal: 0
+lab tmux windows: primary:zsh 

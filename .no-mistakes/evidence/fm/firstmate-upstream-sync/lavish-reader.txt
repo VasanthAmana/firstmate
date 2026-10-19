@@ -1,0 +1,175 @@
+=== F2a: legacy {question,answer} choice context ===
+session:
+  file: /a.html
+  status: feedback
+prompts[1]{uid,prompt,selector,tag,text}:
+  "el-1","Context data: {\"question\":\"deploy-target\",\"answer\":\"staging\"}","button#s",choice,"Staging"
+--- read:
+SESSION-ENDING MESSAGE: (none)
+
+declared_items: 1
+presented_items: 1
+malformed_items: 0
+complete: yes
+lifecycle: feedback
+session_ended: (unset)
+annotation_count: 1
+captain_message_count: 0
+
+ANNOTATIONS
+ANNOTATION 1 of 1
+element_uid: el-1
+element_selector: button#s
+tag: choice
+text:
+| Staging
+answer:
+| staging
+END ANNOTATIONS
+END LAVISH RESULT (1 of 1)
+rc=0
+
+=== F2b: choice with non-JSON context + element text ===
+session:
+  file: /a.html
+  status: feedback
+prompts[1]{uid,prompt,selector,tag,text}:
+  "el-2","Context data: not json at all","button#x",choice,"Ship it"
+--- read:
+SESSION-ENDING MESSAGE: (none)
+
+declared_items: 1
+presented_items: 1
+malformed_items: 0
+complete: yes
+lifecycle: feedback
+session_ended: (unset)
+annotation_count: 1
+captain_message_count: 0
+
+ANNOTATIONS
+ANNOTATION 1 of 1
+element_uid: el-2
+element_selector: button#x
+tag: choice
+text:
+| Ship it
+prompt:
+| Context data: not json at all
+END ANNOTATIONS
+END LAVISH RESULT (1 of 1)
+rc=0
+
+=== F2c: v1 choice with empty note ===
+session:
+  file: /a.html
+  status: feedback
+prompts[1]{tag,text,prompt}:
+  "choice","short","Context data: {\"schema\":\"fm-bearings-answer.v1\",\"question\":\"sample-short-call\",\"selection\":\"A1.yes\",\"note\":\"\"}"
+--- read:
+SESSION-ENDING MESSAGE: (none)
+
+declared_items: 1
+presented_items: 1
+malformed_items: 0
+complete: yes
+lifecycle: feedback
+session_ended: (unset)
+annotation_count: 1
+captain_message_count: 0
+
+ANNOTATIONS
+ANNOTATION 1 of 1
+element_uid: 
+element_selector: 
+tag: choice
+text:
+| short
+question:
+| sample-short-call
+selection:
+| A1.yes
+note: (none)
+END ANNOTATIONS
+END LAVISH RESULT (1 of 1)
+rc=0
+
+=== F3: unknown top-level field + second block AFTER prompts ===
+session:
+  file: /a.html
+  status: feedback
+prompts[1]{tag,text,prompt}:
+  "choice","Option B","Context data: {\"question\":\"q\",\"answer\":\"b\"}"
+attachments[1]{name}:
+  "x.png"
+next_step: do something
+--- read:
+UNPARSEABLE CAPTURE: this result carries content this reader could not fully account for, so the counts below are NOT the whole round; read the raw capture at /var/folders/qh/9g4nkxyd4_b41v4nz0qpt8b40000gn/T/tmp.H4AZBKqYdr/d
+unparsed: an unrecognized top-level field attachments
+
+SESSION-ENDING MESSAGE: (none)
+
+declared_items: 1
+presented_items: 1
+malformed_items: 0
+complete: no
+lifecycle: feedback
+session_ended: (unset)
+annotation_count: 1
+captain_message_count: 0
+
+ANNOTATIONS
+ANNOTATION 1 of 1
+element_uid: 
+element_selector: 
+tag: choice
+text:
+| Option B
+answer:
+| b
+END ANNOTATIONS
+END LAVISH RESULT (1 of 1)
+read rc=3
+error: the result is not fully accounted for: declared 1, parsed 1, malformed 0
+q	b	Option B
+answers rc=3
+error: the result is not fully accounted for: declared 1, parsed 1, malformed 0
+reconciles rc=3
+
+=== F3 control: same capture without trailing extras ===
+SESSION-ENDING MESSAGE: (none)
+
+declared_items: 1
+presented_items: 1
+malformed_items: 0
+complete: yes
+lifecycle: feedback
+session_ended: (unset)
+annotation_count: 1
+captain_message_count: 0
+
+ANNOTATIONS
+ANNOTATION 1 of 1
+element_uid: 
+element_selector: 
+tag: choice
+text:
+| Option B
+answer:
+| b
+END ANNOTATIONS
+END LAVISH RESULT (1 of 1)
+read rc=0
+q	b	Option B
+answers rc=0
+=== F3b: only an unknown scalar field after prompts ===
+read rc=0
+complete: yes
+=== F3c: unknown field after a known trailing next_step ===
+unparsed: an unrecognized top-level field bogus_field
+complete: no
+answers rc=3
+=== F3d: second prompts block after the first ===
+unparsed: the result is not fully accounted for
+complete: no
+reconciles rc=3

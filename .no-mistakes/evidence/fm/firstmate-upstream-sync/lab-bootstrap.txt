@@ -1,0 +1,3 @@
+# fm-bootstrap.sh in a disposable lab home (merged tree)
+
+[exit 0]
