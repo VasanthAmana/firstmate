@@ -1,0 +1,20 @@
+$ printf "this-host:4455
+" > $LAB/config/lavish-axi-host
+$ fm-remote-inherit.sh put config/lavish-axi-host 17 <hash> 1 < payload
+skipped: config/lavish-axi-host (machine-local; this host keeps its own value)
+exit=0
+$ fm-remote-inherit.sh absent config/lavish-axi-host 0 <emptyhash> 2
+skipped: config/lavish-axi-host (machine-local; this host keeps its own value)
+exit=0
+$ cat config/lavish-axi-host  -> this-host:4455
+$ ls -a config | grep fm-inherit-lavish -> (none)
+
+$ fm-remote-inherit.sh put config/fm-unknown-item 17 <hash> 3 < payload
+error: path is not inherited material: config/fm-unknown-item
+exit=1
+$ ls -a config | grep unknown -> (none)
+
+$ fm-remote-inherit.sh put config/crew-harness 7 <hash> 4 < payload2   (declared, non-machine-local)
+pushed: config/crew-harness
+exit=0
+$ cat config/crew-harness -> claude

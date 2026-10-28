@@ -1,0 +1,23 @@
+$ FM_HOME=$LAB bin/fm-config-push.sh   (primary config/lavish-axi-host = primary-host:4455; same-machine secondmate home $SM)
+config-push: $LAB -> live secondmate homes
+secondmate sm1 (/private/var/folders/qh/9g4nkxyd4_b41v4nz0qpt8b40000gn/T/fm-lab-sm.573n03):
+  crew-dispatch.json: unchanged
+  dispatch-never-send: unchanged
+  crew-harness: unchanged
+  backlog-backend: unchanged
+  backend: unchanged
+  herdr-presentation-spaces: unchanged
+  herdr-project-groups: unchanged
+  startup-memory-budget: unchanged
+  trace-context: unchanged - session-scoped
+  launch-env-allowlist: unchanged
+  claude-permission-mode: unchanged
+  codex-approval-mode: unchanged
+  lavish-axi-host: pushed
+  t3code-instances: unchanged
+  keep-ai-trailers: unchanged
+  supervision-host-off: unchanged
+  firstmate-role: unchanged
+  data/captain-shared.md: unchanged
+CONFIG_REREAD: secondmate sm1: send failed: error: refusing fleet lifecycle from inside a no-mistakes gate worktree (/Users/amana/.no-mistakes/repos/0ce2e69739c0.git)
+$ cat $SM/config/lavish-axi-host -> primary-host:4455
