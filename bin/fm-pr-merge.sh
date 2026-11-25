@@ -251,7 +251,6 @@
 # supervision actor; a quiet record or none routes an attended merge.
 # A remote transport failure (exit 255) is reported as an unknown outcome to
 # reconcile against the forge, never retried here.
-
 #
 # On GitLab, this script confirms the MR is actually merged before reporting it;
 # an auto-merge-queued or unconfirmed request leaves the poll armed and records
