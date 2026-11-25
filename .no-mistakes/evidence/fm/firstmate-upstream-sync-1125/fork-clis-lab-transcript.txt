@@ -1,0 +1,93 @@
+$ bin/fm-initiative.sh new sync-check --goal Prove upstream sync keeps initiatives --name Sync check
+created initiative sync-check: /var/folders/qh/9g4nkxyd4_b41v4nz0qpt8b40000gn/T//fm-lab.2IZFl0/data/initiatives/sync-check.json
+[exit 0]
+$ bin/fm-initiative.sh add sync-check t-001 t-002
+add: sync-check now has 2 explicit member(s)
+[exit 0]
+$ bin/fm-initiative.sh add sync-check t-003 --home ghostmate
+fm-initiative: home ghostmate is neither main nor a registered second mate in /var/folders/qh/9g4nkxyd4_b41v4nz0qpt8b40000gn/T//fm-lab.2IZFl0/data/secondmates.md
+[exit 1]
+$ bin/fm-initiative.sh list
+Initiatives:
+- sync-check - Sync check: needs attention, 0/2 done (2 not found) - owner captain
+[exit 0]
+$ bin/fm-initiative.sh show sync-check --json
+{
+  "schema": "fm-initiatives.v1",
+  "generated": "2026-11-25T20:48:29Z",
+  "homes": [
+    {
+      "id": "main",
+      "kind": "main",
+      "reachable": true,
+      "reason": null,
+      "notes": [
+        "no backlog file"
+      ]
+    }
+  ],
+  "unreadable_records": [],
+  "initiatives": [
+    {
+      "slug": "sync-check",
+      "name": "Sync check",
+      "goal": "Prove upstream sync keeps initiatives",
+      "owner": "captain",
+      "status": "active",
+      "created": "2026-11-25",
+      "refresh": null,
+      "progress": {
+        "counts": {
+          "total": 2,
+          "done": 0,
+          "in_flight": 0,
+          "queued": 0,
+          "blocked": 0,
+          "held": 0,
+          "missing": 2,
+          "unreachable": 0
+        },
+        "status": "needs attention"
+      },
+      "members": [
+        {
+          "task": "t-001",
+          "home": "main",
+          "source": "record",
+          "observed": null,
+          "state": "missing",
+          "detail": "not found in this home backlog or done archive"
+        },
+        {
+          "task": "t-002",
+          "home": "main",
+          "source": "record",
+          "observed": null,
+          "state": "missing",
+          "detail": "not found in this home backlog or done archive"
+        }
+      ]
+    }
+  ]
+}
+[exit 0]
+$ bin/fm-initiative.sh close sync-check
+initiative sync-check is now closed
+[exit 0]
+$ bin/fm-initiative.sh list --all
+Initiatives:
+- sync-check - Sync check: needs attention, 0/2 done (2 not found) - owner captain [closed]
+[exit 0]
+$ bin/fm-fleet-usage.sh
+| host | mates | provider | account | 5h left | 5h resets | 5h pace | week left | week resets | week pace | month left | month resets | other |
+| --- | --- | --- | --- | ---: | --- | --- | ---: | --- | --- | ---: | --- | --- |
+| local | - | kimi | - | 15% | 2026-11-26 04:31 IST | ahead | - | - | - | 82% | 2026-12-24 16:33 IST | code month - |
+| local | - | claude | <redacted-account> | - | - | - | 94% | 2026-12-02 14:29 IST | behind | - | - | - |
+| local | - | codex | <redacted-account> | - | - | - | - | - | - | - | - | 720h window 100% |
+| local | - | cursor | <redacted-account> | - | - | - | - | - | - | - | - | included usage 100%; auto usage 100%; API usage 100% |
+
+## attention
+
+- local codex unmeasurable: window:720h blocks runway + spendPriority
+- local kimi share: month_code of month_total · 17.78
+[exit 0]

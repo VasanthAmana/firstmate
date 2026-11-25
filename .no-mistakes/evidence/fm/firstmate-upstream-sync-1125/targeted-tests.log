@@ -1,0 +1,742 @@
+FM_TEST_BEGIN 2026-11-25T20:48:16Z tests/fm-pr-merge.test.sh family=pr-forge expected_gate_skip=none
+FM_TEST_BEGIN 2026-11-25T20:48:16Z tests/fm-captain-hold-lifecycle.test.sh family=pure-contract-unit expected_gate_skip=none
+ok - marked hold reasons round-trip through public reads, fleet, startup, and return without changing other fields
+ok - report-only unresolved captain call is reproduced and completion refuses before loss
+ok - the completion gate attests captain-held inventory and transfers open status decisions
+ok - answer records the captain's words, closes idempotently, and releases routed work
+ok - release frees held work with the captain's words recorded and the body preserved
+ok - a captain hold is released only in an attended session: away refuses, quiet and no record release
+ok - a release waiting on the task lock rechecks the away posture under the lock
+ok - captain holds become visible only after their hold-set timestamp is durable
+ok - an interrupted answer preserves its hold age until close retry
+ok - a deferred captain call leaves the live Captain's Call until its date and stays answerable
+ok - an out-of-band close is recordable with the captain's word and nothing else
+ok - an answered call pruned into the done archive still satisfies the completion gate
+ok - an archived call with no recorded answer still fails the completion gate
+ok - ended visual review follows the same captain-hold completion owner
+ok - resolved findings and decision-like prose do not create captain-held tasks
+ok - completion keeps an armed PR identity last in the task record
+ok - completion replaces a completion pair recorded after pr= by the previous writer
+ok - terminal single-owner stale status decisions do not block empty inventory
+ok - main-home and secondmate-home captain calls remain correctly routed
+ok - a secondmate home publishes each hold occurrence and its answer on the parent channel
+ok - secondmate resolutions publish before retiring durable retry triggers
+ok - a bound channel's captured answers close their captain-held tasks at answer time
+ok - only a bound captured source creates reconcile requests
+ok - normal answers and their replays retire reconcile requests
+ok - reconcile closes a moot call with evidence and keeps an active one open with a note
+ok - reconcile outcomes apply durable mutations once across partial failures
+ok - a channel source with no decision binding closes nothing
+ok - legacy identities, metadata, bindings, and the shim keep working
+ok - a board answer reaches the keyed-answer intake and wakes firstmate
+ok - a board note reaches the durable decision with its selection
+ok - the chat channel feeds the same keyed-answer intake a captured review does
+ok - completion and verification validate origins before constructing paths
+ok - a status resolution over a still-open captain-held task is signalled, not closed
+ok - a captain call with no routed work, a verified transfer, an open decision, and an answered call all stay silent
+ok - skipped on markdown-only tasks-axi: verify against a beads-migrated hold
+ok - skipped on markdown-only tasks-axi: verify against a prefix-migrated hold
+ok - skipped on markdown-only tasks-axi: prefer a marker-noted row over a prefix namesake
+ok - skipped on markdown-only tasks-axi: complete against a beads-migrated hold
+ok - skipped on markdown-only tasks-axi: verify an unresolvable beads legacy id
+ok - skipped on markdown-only tasks-axi: verify a derived pre-collapse key
+ok - captain-hold mutations address the beads backend without a markdown override
+ok - skipped on markdown-only tasks-axi: captain-hold create under due.required without types.custom
+FM_TEST_END 2026-11-25T20:56:31Z tests/fm-captain-hold-lifecycle.test.sh exit=0 duration_ms=495037 gate_skip=false
+observation: visibility=updated blocker=draft waiting=pending preflight_reads=2 retry_advice=false
+observation: visibility=updated blocker=draft waiting=missing preflight_reads=2 retry_advice=false
+observation: visibility=updated blocker=closed waiting=pending preflight_reads=2 retry_advice=false
+observation: visibility=updated blocker=closed waiting=missing preflight_reads=2 retry_advice=false
+observation: visibility=updated blocker=conflict waiting=pending preflight_reads=2 retry_advice=false
+observation: visibility=updated blocker=conflict waiting=missing preflight_reads=2 retry_advice=false
+observation: visibility=updated blocker=required-source waiting=pending preflight_reads=2 retry_advice=false
+observation: visibility=updated blocker=required-source waiting=missing preflight_reads=2 retry_advice=false
+observation: visibility=delayed blocker=draft waiting=pending preflight_reads=2 retry_advice=false
+observation: visibility=delayed blocker=draft waiting=missing preflight_reads=2 retry_advice=false
+observation: visibility=delayed blocker=closed waiting=pending preflight_reads=2 retry_advice=false
+observation: visibility=delayed blocker=closed waiting=missing preflight_reads=2 retry_advice=false
+observation: visibility=delayed blocker=conflict waiting=pending preflight_reads=2 retry_advice=false
+observation: visibility=delayed blocker=conflict waiting=missing preflight_reads=2 retry_advice=false
+observation: visibility=delayed blocker=required-source waiting=pending preflight_reads=2 retry_advice=false
+observation: visibility=delayed blocker=required-source waiting=missing preflight_reads=2 retry_advice=false
+ok - fm-pr-merge immediately refuses draft, closed, conflicting, or unreadable updated heads despite pending or missing checks
+ok - fm-pr-merge refuses a concurrent source-head change before updating, with or without --expected-head
+ok - fm-pr-merge reports exact queue retry flags after a zero-exit false success
+ok - fm-pr-merge omits merge-queue retry guidance for a closed GitHub PR
+ok - fm-pr-merge aggregates agreeing merge-queue rules
+ok - fm-pr-merge reports ambiguity for conflicting merge-queue rules
+ok - fm-pr-merge records pr= and pr_head= for a verified GitHub merge
+ok - fm-pr-merge records pr= before the forge call can land the merge
+ok - fm-pr-merge propagates a real merge failure without silently succeeding
+ok - fm-pr-merge refuses a GitHub merge call that leaves the PR open and unqueued
+ok - fm-pr-merge retries a bounded number of times when mergeable is UNKNOWN and merges once it resolves
+ok - fm-pr-merge reports mergeability still pending after its bounded UNKNOWN retry is spent
+ok - fm-pr-merge refuses on the UNKNOWN re-check when a check turned red between reads
+ok - fm-pr-merge refuses a genuine mergeable conflict immediately, without retrying
+ok - fm-pr-merge keeps PR bookkeeping when it cannot read a successful merge call's outcome
+ok - fm-pr-merge refuses with the forge's own output quoted apart from its verdict
+ok - fm-pr-merge quotes the forge output when it cannot read the outcome either
+ok - fm-pr-merge does not echo back queue flags the caller already used
+ok - fm-pr-merge still names retry flags when the caller used a different method
+ok - fm-pr-merge names the queue requirement even when its method is unrecognised
+ok - fm-pr-merge distinguishes unreadable branch rules from a base with no merge queue
+ok - fm-pr-merge reads a plan-gated 403 on branch rules as no merge queue, not unreadable
+ok - fm-pr-merge says nothing about a merge queue when the base branch has no queue rule
+ok - fm-pr-merge accepts only a proved merge from the gh-axi fallback
+ok - fm-pr-merge explains an armed auto-merge that landed nothing on a queue-less base
+ok - fm-pr-merge never reports auto-merge as armed when the merge command failed
+ok - fm-pr-merge claims no acceptance for a failed merge command carrying queue flags
+ok - fm-pr-merge falls back to the gh-axi view when gh's read fails
+ok - fm-pr-merge names a landed state hiding behind a failed GitHub merge command
+ok - fm-pr-merge refuses a GitHub merge when gh is missing, before recording
+ok - fm-pr-merge refuses a GitHub merge when gh is missing rather than merging blind
+ok - fm-pr-merge verifies a genuinely merged GitHub pull request
+ok - fm-pr-merge refuses to claim a merge when poll recording fails
+ok - fm-pr-merge accepts and accurately reports a GitHub merge-queue entry
+ok - fm-pr-merge explains how to retry with the required GitHub merge queue method
+ok - fm-pr-merge refuses branch deletion unless --attended-override is passed
+ok - fm-pr-merge refuses before merging when task meta is missing
+ok - fm-pr-merge refuses malformed PR URLs before calling gh-axi
+ok - fm-pr-merge --help and -h print the header usage and exit 0
+ok - fm-pr-merge refuses unsafe PR URL segments before recording state
+ok - fm-pr-merge refuses repo override args before recording state
+ok - fm-pr-merge refuses a bundled short-option repo override and refuses -d unless attended
+ok - fm-pr-merge does not add default --squash when the caller passes an explicit merge method
+ok - fm-pr-merge respects --method=<value> as an explicit merge method
+ok - fm-pr-merge parses a GitHub PR URL into gh-axi number and --repo arguments
+ok - fm-pr-merge refuses a caller --sha on GitHub because the head comes from the live read
+ok - fm-pr-merge merges a GitLab merge request through glab instead of refusing it
+ok - fm-pr-merge takes the GitLab instance from the URL rather than assuming one
+ok - fm-pr-merge imposes no merge method on GitLab, leaving the project's own one
+ok - fm-pr-merge refuses GitLab source-branch deletion unless --attended-override is passed
+ok - fm-pr-merge propagates a real glab merge failure without silently succeeding
+ok - fm-pr-merge refuses on each GitLab pre-merge condition independently
+ok - fm-pr-merge reports every failing GitLab condition, not only the first
+ok - fm-pr-merge reports a stale recorded head and verifies the live one
+ok - fm-pr-merge refuses an unreadable GitLab merge request state rather than merging blind
+ok - fm-pr-merge refuses a GitLab head commit it cannot validate
+ok - fm-pr-merge refuses before recording anything when glab or jq is absent
+ok - fm-pr-merge merges a Forgejo pull request through tea api instead of refusing it
+ok - fm-pr-merge resolves the tea login by matching the PR's host against every registered login
+ok - fm-pr-merge refuses when zero or more than one tea login matches the pull request's host
+ok - fm-pr-merge refuses on each Forgejo pre-merge condition independently
+ok - fm-pr-merge treats an unconfigured Forgejo combined status as none, refusing rather than skipping the check
+ok - fm-pr-merge reads every Forgejo combined-status page before merging
+ok - fm-pr-merge reports a stale recorded head and binds the merge to the live one instead
+ok - fm-pr-merge refuses a Forgejo head commit it cannot validate
+ok - fm-pr-merge refuses before recording anything when tea or jq is absent
+ok - fm-pr-merge never trusts tea api's exit status alone; a rejected merge is caught by the confirm read
+ok - fm-pr-merge retries a failed Forgejo confirmation read and persists the merge authority
+ok - fm-pr-merge maps --squash/--rebase to Forgejo's Do field, defaults to the repository's default merge style, and refuses any other extra argument
+ok - fm-pr-merge refuses a GitLab head override before recording state
+ok - a merge a secondmate home performs itself is reported upward exactly once
+ok - a locally routed secondmate home reports the landed PR into its parent's own channel
+ok - a landed GitLab merge request is reported upward on the same channel
+ok - a queued GitLab merge stays silent and leaves confirmation to the armed poll
+ok - a refused or failed merge reports no outcome
+ok - a GitLab merge refused before the forge call reports no outcome
+ok - a merge a main home performs itself leaves one durable wake naming the PR
+ok - a queued GitHub merge stays silent and leaves confirmation to the armed poll
+ok - distinct merged PRs for one task retain distinct captain-facing wakes
+ok - an uncommitted marker retry preserves at least one durable outcome
+ok - a secondmate home that cannot report upward says so instead of merging in silence
+ok - a parent merges a secondmate child's PR through the owning home's own guarded path
+ok - a secondmate child's PR still meets every guard of the owning home's merge
+ok - a secondmate merge is refused unless the registry routes to that secondmate's own home
+ok - a routed secondmate merge carries the parent's away authority into the owning home's guarded merge
+ok - a secondmate route refuses the supervision branch when the away record lapses before routing
+ok - an owning home honors away authority only from its bound parent's live record
+ok - a remote secondmate merge carries the parent's away authority under the parent's record lock
+ok - a remote secondmate child's PR is merged by that home's own guarded path on its host
+ok - fm-pr-merge proceeds when the home carries no backlog at all
+ok - fm-pr-merge refuses when the backlog exists but cannot be read
+ok - fm-pr-merge refuses when its configured backend cannot be read
+ok - fm-pr-merge refuses when its user backend configuration cannot be read
+ok - fm-pr-merge refuses when its user backend configuration directory cannot be traversed
+ok - fm-pr-merge proceeds once when its user configuration directory and backlog are genuinely absent
+ok - fm-pr-merge honors a backend override over an unreadable user configuration
+ok - fm-pr-merge updates behind branches only with explicit opt-in after all guards pass
+ok - fm-pr-merge retains --expected-head before and after a consented behind-branch update
+ok - fm-pr-merge refuses failed updated checks immediately while other checks are pending
+ok - fm-pr-merge updates a green behind branch and merges only after the new head is green
+ok - fm-pr-merge refuses red GitHub checks and waives only a named --allow-red check
+ok - fm-pr-merge refuses a draft pull request and one with no boolean draft state
+ok - fm-pr-merge merges when a failed check run was replaced by a passing re-run
+ok - fm-pr-merge never lets a check run supersede a legacy status context
+ok - fm-pr-merge still refuses when a check's current run failed after an earlier pass
+ok - fm-pr-merge uses start order when the old success finishes last
+ok - fm-pr-merge supersedes an old cancellation that finishes last
+ok - fm-pr-merge keeps a check red while its re-run is still in flight
+ok - fm-pr-merge never lets one check's pass clear another check's failure
+ok - fm-pr-merge clears a failure only on a proven later pass of the same check
+ok - fm-pr-merge keeps --allow-red scoped to its named check beside a superseded failure
+ok - fm-pr-merge rechecks away presence before an attended red merge
+ok - fm-pr-merge keeps a quiet-mode home's merges attended, the named red-check waiver included
+ok - fm-pr-merge accepts exactly one separately named red-check waiver
+ok - while the away-posture record exists any green merge lands under away authority, yolo or not, and attended merges stay untagged
+ok - under the away-posture record the branch merges a green task, is refused on a red check with or without --allow-red, and is refused at the partition while attended
+ok - a branch merge refuses under the lock when the away record is archived during preflight
+ok - away posture permits immediate merges but refuses every asynchronous path
+ok - away merge proceeds on a plan-gated 403 because that repository cannot have a merge queue
+ok - the away record does not bypass red checks, and a recorded pr= must match the URL
+ok - an unreadable away-posture record refuses the merge instead of skipping the record
+ok - no away-record archive or replacement lands between the authority read and the merge
+ok - a record made unreadable before the merge's own authority read refuses the merge
+ok - a merge that cannot lock the away record refuses instead of merging unlocked
+ok - fm-pr-merge refuses --allow-red on GitLab
+ok - fm-pr-merge refuses when a required check from branch protection or a ruleset never reported
+ok - fm-pr-merge merges when every required check reported and is green
+ok - fm-pr-merge reports a red check and an unreported required check together with every other failure
+ok - fm-pr-merge refuses when the required checks cannot be read, and tells a plan without rules apart
+ok - fm-pr-merge --allow-missing waives only its named unreported check
+ok - fm-pr-merge --allow-missing is single use, attended-only, and GitHub-only like --allow-red
+ok - fm-pr-merge enforces required producer identity and named waivers
+ok - fm-pr-merge matches an app-bound required commit status by name
+ok - fm-pr-merge reports known missing checks and all independent read errors
+ok - fm-pr-merge refuses --allow-red on Forgejo
+ok - fm-pr-merge refuses --allow-missing on Forgejo
+ok - fm-pr-merge --allow-no-pipeline waives only a null GitLab head pipeline and keeps every other condition
+ok - fm-pr-merge --allow-no-pipeline is attended-only, takes no value, and applies only to GitLab
+ok - fm-pr-merge sends a matching --expected-head to each forge
+ok - fm-pr-merge refuses before any merge write when the live head differs from --expected-head
+ok - fm-pr-merge binds the forge write to the supplied head after that head moves
+ok - fm-pr-merge does not replace --expected-head when a later preflight reads a new head
+ok - fm-pr-merge refuses a malformed, abbreviated, missing, or conflicting --expected-head before any effect
+ok - fm-pr-merge keeps draft, hold, review, check, authority, and identity refusals when --expected-head matches
+ok - fm-pr-merge squash-merges with the PR title and only its What Changed section when opted in
+ok - fm-pr-merge reads the What Changed section from a CRLF PR body
+ok - fm-pr-merge keeps the repository's squash text when not opted in, the section is absent or empty, the PR text is unreadable, or the method is merge or rebase
+ok - fm-pr-merge never adds the PR summary when the caller passed its own subject or body
+ok - fm-pr-merge leaves GitLab and Forgejo merges unchanged under the squash-summary opt-in
+ok - fm-pr-merge ignores headings inside fenced code, and treats a backtick run holding a backtick as inline code, when reading the What Changed section
+FM_TEST_END 2026-11-25T21:01:23Z tests/fm-pr-merge.test.sh exit=0 duration_ms=786938 gate_skip=false
+FM_TEST_BEGIN 2026-11-25T21:01:23Z tests/fm-timeout-lib.test.sh family=pure-contract-unit expected_gate_skip=none
+ok - fm_run_timed perl preserves interruption status during timeout cleanup
+ok - fm_run_timed perl bounds its deadline and cleanup despite wall-clock changes
+ok - fm_run_timed perl reaps owned groups and preserves caller signal dispositions on INT/HUP/TERM and timeout
+[1]+  Interrupt: 2            perl -MPOSIX=WNOHANG,setpgid -MTime::HiRes=clock_gettime,CLOCK_MONOTONIC -e '
+        my $bound = shift;
+        my ($signal, $kill_at, $result) = (0, 0, 0);
+        for my $entry ([HUP => 1], [INT => 2], [TERM => 15]) {
+          my ($name, $number) = @$entry;
+          $SIG{$name} = sub { $signal ||= $number };
+        }
+        my $pid = fork;
+        exit 127 unless defined $pid;
+        if (!$pid) {
+          $SIG{$_} = "DEFAULT" for qw(INT HUP TERM);
+          setpgid(0, 0);
+          exec @ARGV;
+          exit 127;
+        }
+        # Both sides establish the group before the parent can signal it.
+        setpgid($pid, $pid);
+        my $deadline = clock_gettime(CLOCK_MONOTONIC) + $bound;
+        while (1) {
+          if (!$kill_at && ($signal || clock_gettime(CLOCK_MONOTONIC) >= $deadline)) {
+            $result = $signal ? 128 + $signal : 124;
+            $kill_at = clock_gettime(CLOCK_MONOTONIC) + 0.2;
+            kill "TERM", -$pid;
+          }
+          my $done = waitpid $pid, WNOHANG;
+          if ($done == $pid) {
+            my $status = $?;
+            kill "KILL", -$pid if $kill_at;
+            exit($kill_at ? $result : ($status & 127) ? 128 + ($status & 127) : $status >> 8);
+          }
+          exit 127 if $done == -1;
+          if ($kill_at && clock_gettime(CLOCK_MONOTONIC) >= $kill_at) {
+            kill "KILL", -$pid;
+            waitpid $pid, 0;
+            exit $result;
+          }
+          select undef, undef, undef, 0.02;
+        }
+      ' -- "$seconds" "$@" 0<&0
+[1]+  Interrupt: 2            perl -MPOSIX=WNOHANG,setpgid -MTime::HiRes=clock_gettime,CLOCK_MONOTONIC -e '
+        my $bound = shift;
+        my ($signal, $kill_at, $result) = (0, 0, 0);
+        for my $entry ([HUP => 1], [INT => 2], [TERM => 15]) {
+          my ($name, $number) = @$entry;
+          $SIG{$name} = sub { $signal ||= $number };
+        }
+        my $pid = fork;
+        exit 127 unless defined $pid;
+        if (!$pid) {
+          $SIG{$_} = "DEFAULT" for qw(INT HUP TERM);
+          setpgid(0, 0);
+          exec @ARGV;
+          exit 127;
+        }
+        # Both sides establish the group before the parent can signal it.
+        setpgid($pid, $pid);
+        my $deadline = clock_gettime(CLOCK_MONOTONIC) + $bound;
+        while (1) {
+          if (!$kill_at && ($signal || clock_gettime(CLOCK_MONOTONIC) >= $deadline)) {
+            $result = $signal ? 128 + $signal : 124;
+            $kill_at = clock_gettime(CLOCK_MONOTONIC) + 0.2;
+            kill "TERM", -$pid;
+          }
+          my $done = waitpid $pid, WNOHANG;
+          if ($done == $pid) {
+            my $status = $?;
+            kill "KILL", -$pid if $kill_at;
+            exit($kill_at ? $result : ($status & 127) ? 128 + ($status & 127) : $status >> 8);
+          }
+          exit 127 if $done == -1;
+          if ($kill_at && clock_gettime(CLOCK_MONOTONIC) >= $kill_at) {
+            kill "KILL", -$pid;
+            waitpid $pid, 0;
+            exit $result;
+          }
+          select undef, undef, undef, 0.02;
+        }
+      ' -- "$seconds" "$@" 0<&0
+[1]+  Hangup: 1               perl -MPOSIX=WNOHANG,setpgid -MTime::HiRes=clock_gettime,CLOCK_MONOTONIC -e '
+        my $bound = shift;
+        my ($signal, $kill_at, $result) = (0, 0, 0);
+        for my $entry ([HUP => 1], [INT => 2], [TERM => 15]) {
+          my ($name, $number) = @$entry;
+          $SIG{$name} = sub { $signal ||= $number };
+        }
+        my $pid = fork;
+        exit 127 unless defined $pid;
+        if (!$pid) {
+          $SIG{$_} = "DEFAULT" for qw(INT HUP TERM);
+          setpgid(0, 0);
+          exec @ARGV;
+          exit 127;
+        }
+        # Both sides establish the group before the parent can signal it.
+        setpgid($pid, $pid);
+        my $deadline = clock_gettime(CLOCK_MONOTONIC) + $bound;
+        while (1) {
+          if (!$kill_at && ($signal || clock_gettime(CLOCK_MONOTONIC) >= $deadline)) {
+            $result = $signal ? 128 + $signal : 124;
+            $kill_at = clock_gettime(CLOCK_MONOTONIC) + 0.2;
+            kill "TERM", -$pid;
+          }
+          my $done = waitpid $pid, WNOHANG;
+          if ($done == $pid) {
+            my $status = $?;
+            kill "KILL", -$pid if $kill_at;
+            exit($kill_at ? $result : ($status & 127) ? 128 + ($status & 127) : $status >> 8);
+          }
+          exit 127 if $done == -1;
+          if ($kill_at && clock_gettime(CLOCK_MONOTONIC) >= $kill_at) {
+            kill "KILL", -$pid;
+            waitpid $pid, 0;
+            exit $result;
+          }
+          select undef, undef, undef, 0.02;
+        }
+      ' -- "$seconds" "$@" 0<&0
+[1]+  Hangup: 1               perl -MPOSIX=WNOHANG,setpgid -MTime::HiRes=clock_gettime,CLOCK_MONOTONIC -e '
+        my $bound = shift;
+        my ($signal, $kill_at, $result) = (0, 0, 0);
+        for my $entry ([HUP => 1], [INT => 2], [TERM => 15]) {
+          my ($name, $number) = @$entry;
+          $SIG{$name} = sub { $signal ||= $number };
+        }
+        my $pid = fork;
+        exit 127 unless defined $pid;
+        if (!$pid) {
+          $SIG{$_} = "DEFAULT" for qw(INT HUP TERM);
+          setpgid(0, 0);
+          exec @ARGV;
+          exit 127;
+        }
+        # Both sides establish the group before the parent can signal it.
+        setpgid($pid, $pid);
+        my $deadline = clock_gettime(CLOCK_MONOTONIC) + $bound;
+        while (1) {
+          if (!$kill_at && ($signal || clock_gettime(CLOCK_MONOTONIC) >= $deadline)) {
+            $result = $signal ? 128 + $signal : 124;
+            $kill_at = clock_gettime(CLOCK_MONOTONIC) + 0.2;
+            kill "TERM", -$pid;
+          }
+          my $done = waitpid $pid, WNOHANG;
+          if ($done == $pid) {
+            my $status = $?;
+            kill "KILL", -$pid if $kill_at;
+            exit($kill_at ? $result : ($status & 127) ? 128 + ($status & 127) : $status >> 8);
+          }
+          exit 127 if $done == -1;
+          if ($kill_at && clock_gettime(CLOCK_MONOTONIC) >= $kill_at) {
+            kill "KILL", -$pid;
+            waitpid $pid, 0;
+            exit $result;
+          }
+          select undef, undef, undef, 0.02;
+        }
+      ' -- "$seconds" "$@" 0<&0
+[1]+  Terminated: 15          perl -MPOSIX=WNOHANG,setpgid -MTime::HiRes=clock_gettime,CLOCK_MONOTONIC -e '
+        my $bound = shift;
+        my ($signal, $kill_at, $result) = (0, 0, 0);
+        for my $entry ([HUP => 1], [INT => 2], [TERM => 15]) {
+          my ($name, $number) = @$entry;
+          $SIG{$name} = sub { $signal ||= $number };
+        }
+        my $pid = fork;
+        exit 127 unless defined $pid;
+        if (!$pid) {
+          $SIG{$_} = "DEFAULT" for qw(INT HUP TERM);
+          setpgid(0, 0);
+          exec @ARGV;
+          exit 127;
+        }
+        # Both sides establish the group before the parent can signal it.
+        setpgid($pid, $pid);
+        my $deadline = clock_gettime(CLOCK_MONOTONIC) + $bound;
+        while (1) {
+          if (!$kill_at && ($signal || clock_gettime(CLOCK_MONOTONIC) >= $deadline)) {
+            $result = $signal ? 128 + $signal : 124;
+            $kill_at = clock_gettime(CLOCK_MONOTONIC) + 0.2;
+            kill "TERM", -$pid;
+          }
+          my $done = waitpid $pid, WNOHANG;
+          if ($done == $pid) {
+            my $status = $?;
+            kill "KILL", -$pid if $kill_at;
+            exit($kill_at ? $result : ($status & 127) ? 128 + ($status & 127) : $status >> 8);
+          }
+          exit 127 if $done == -1;
+          if ($kill_at && clock_gettime(CLOCK_MONOTONIC) >= $kill_at) {
+            kill "KILL", -$pid;
+            waitpid $pid, 0;
+            exit $result;
+          }
+          select undef, undef, undef, 0.02;
+        }
+      ' -- "$seconds" "$@" 0<&0
+[1]+  Terminated: 15          perl -MPOSIX=WNOHANG,setpgid -MTime::HiRes=clock_gettime,CLOCK_MONOTONIC -e '
+        my $bound = shift;
+        my ($signal, $kill_at, $result) = (0, 0, 0);
+        for my $entry ([HUP => 1], [INT => 2], [TERM => 15]) {
+          my ($name, $number) = @$entry;
+          $SIG{$name} = sub { $signal ||= $number };
+        }
+        my $pid = fork;
+        exit 127 unless defined $pid;
+        if (!$pid) {
+          $SIG{$_} = "DEFAULT" for qw(INT HUP TERM);
+          setpgid(0, 0);
+          exec @ARGV;
+          exit 127;
+        }
+        # Both sides establish the group before the parent can signal it.
+        setpgid($pid, $pid);
+        my $deadline = clock_gettime(CLOCK_MONOTONIC) + $bound;
+        while (1) {
+          if (!$kill_at && ($signal || clock_gettime(CLOCK_MONOTONIC) >= $deadline)) {
+            $result = $signal ? 128 + $signal : 124;
+            $kill_at = clock_gettime(CLOCK_MONOTONIC) + 0.2;
+            kill "TERM", -$pid;
+          }
+          my $done = waitpid $pid, WNOHANG;
+          if ($done == $pid) {
+            my $status = $?;
+            kill "KILL", -$pid if $kill_at;
+            exit($kill_at ? $result : ($status & 127) ? 128 + ($status & 127) : $status >> 8);
+          }
+          exit 127 if $done == -1;
+          if ($kill_at && clock_gettime(CLOCK_MONOTONIC) >= $kill_at) {
+            kill "KILL", -$pid;
+            waitpid $pid, 0;
+            exit $result;
+          }
+          select undef, undef, undef, 0.02;
+        }
+      ' -- "$seconds" "$@" 0<&0
+ok - fm_run_timed perl cancels before handler installation and preserves caller job control and signal handlers
+ok - fm_run_timed perl preserves stdin, output, completion statuses and caller traps
+ok - fm_run_timed preserves exact inherited pipe stdin through timeout
+ok - fm_run_timed preserves exact pipeline pipe stdin through timeout
+ok - fm_run_timed preserves exact inherited pipe stdin through gtimeout
+ok - fm_run_timed preserves exact pipeline pipe stdin through gtimeout
+ok - fm_run_timed preserves exact inherited pipe stdin through perl
+ok - fm_run_timed preserves exact pipeline pipe stdin through perl
+ok - fm_run_timed preserves exact inherited pipe stdin through bash
+ok - fm_run_timed preserves exact pipeline pipe stdin through bash
+ok - fm_exec_timed passes a command's status and output through unchanged
+ok - system Bash top-level and subshell calls preserve success, failure, and signal status
+Terminated: 15             "$@"
+ok - fm_run_timed reports 124 when the bound TERMs a read whose wrapper recorded 143
+ok - fm_run_timed passes a natural exit through when the bound fired after completion
+ok - fm_run_timed keeps stdout and nonzero status when a function shadows timeout
+ok - fm_run_timed delivers piped stdin through every available mechanism
+ok - fm_exec_timed sends TERM at the bound and a cooperative command ends there
+ok - fm_exec_timed kills a TERM-ignoring command once the grace has passed
+ok - fm_exec_timed replaces the calling shell instead of wrapping it
+ok - fm_exec_timed reaps a descendant that would otherwise hold the output past the bound
+ok - fm_exec_timed forwards a TERM it receives to the bounded command
+ok - fm_exec_timed ends the command when its named owner is already gone
+ok - fm_exec_timed ends the command when its owner dies during watchdog startup
+ok - fm_exec_timed preserves a top-level shell's parent across exec startup
+ok - fm_exec_timed prefers its perl watchdog over timeout
+ok - fm_exec_timed refuses instead of running unbounded when no mechanism exists
+ok - fm_exec_timed rejects a zero, padded, non-numeric, or missing bound and a missing command
+ok - fm_exec_timed's GNU timeout fallback (skipped: no timeout binary on this host)
+ok - fm_timed_out accepts 124 and 137 and nothing else
+ok - fm_exec_timed runs a bounded command on bash 3.2 from the main shell and from a subshell
+ok - fm_exec_timed on bash 3.2 ends the command when the owning script dies, not only when its parent does
+ok - fm_exec_timed on bash 3.2 ends the command when the replaced shell's parent dies
+ok - a backlog transition bounds tasks-axi on bash 3.2 and reports an expired bound
+FM_TEST_END 2026-11-25T21:02:23Z tests/fm-timeout-lib.test.sh exit=0 duration_ms=60252 gate_skip=false
+FM_TEST_BEGIN 2026-11-25T21:02:23Z tests/fm-on.test.sh family=secondmate expected_gate_skip=none
+FM_TEST_BEGIN 2026-11-25T21:02:23Z tests/fm-fleet-usage.test.sh family=secondmate expected_gate_skip=none
+ok - markdown table, sort, unreachable row, and attention
+ok - excluded providers are dropped from table, toon, and attention
+ok - one batch-mode connection per host
+ok - toon output
+ok - absent registry reads only the local host
+ok - malformed registry and bad arguments refuse
+ok - month-only, stale, expired-refreshable, and no-window providers
+FM_TEST_END 2026-11-25T21:02:31Z tests/fm-fleet-usage.test.sh exit=0 duration_ms=7505 gate_skip=false
+ok - fm-on --stdin preserves argv, stdin, stdout, stderr, and exit status without shell interpretation
+ok - fm-on defaults the remote command's stdin to /dev/null
+ok - fm-on arms a bounded SSH dead-peer detection window by default (15s x 3 = 45s)
+ok - fm-on's dead-peer detection window is env-overridable
+ok - fm-on rejects invalid dead-peer settings before launching ssh
+ok - the fixed entrypoint runs every command in the worker's explicit environment
+ok - the entrypoint composes a deduplicated discovered child PATH (kept 2 existing, omitted 9 absent)
+ok - read-only doctor inspects worker gaps over plain SSH without repair
+ok - the remote doctor reports the same PATH the entrypoint hands its children
+ok - the remote doctor derives tool readiness from the installed worker
+ok - the remote doctor reports its required runtime tool set and optional tools
+ok - multiple fm-*.sh executables work without a command table
+ok - tracked-command authorization excludes checkout-local git
+ok - doctor bootstrap remains authenticated when git is unavailable
+ok - transport rejects shell escape, traversal, symlink, and option-injection surfaces
+ok - the fixed entrypoint refuses incompatible protocols and unsafe roots
+ok - ambiguous aliases refuse while exact secondmate ids remain routable
+ok - unreachable and ambiguous transport failures are surfaced without retry
+ok - watcher probes are bounded end to end and cache only unknown results per exact route
+ALL TESTS PASSED
+FM_TEST_END 2026-11-25T21:03:15Z tests/fm-on.test.sh exit=0 duration_ms=51251 gate_skip=false
+FM_TEST_BEGIN 2026-11-25T21:03:15Z tests/fm-procevent.test.sh family=standalone expected_gate_skip=none
+ok - reconcile refreshes at detached launch and still stops after owner lease expiry
+ok - ensure-listening refreshes at detached launch and still stops after owner lease expiry
+ok - inherited runner callers cannot renew owner presence at detached startup
+ok - no configured source means no generated state and no process
+ok - one blocking completion yields exactly one bounded normalized event
+ok - a home reached through a symlinked ancestor runs its sources normally
+not-autohandled: direct-src (left for the handler; still unacknowledged)
+ok - public start owns the process group recorded by its claim
+ok - public start never claims an inherited caller process group
+ok - an unhandled result survives restart and repeat drains, and only explicit acknowledgement stops its re-announcement
+ok - publication cannot race a handled acknowledgement
+ok - handled acknowledgement creation is private and fails safely
+ok - automatic application waits for durable publication and failed publication remains recoverable
+ok - a self-announcing adapter applies quietly and still publishes what it could not apply
+not-autohandled: ends-src (left for the handler; still unacknowledged)
+ok - an adapter-classified terminal result is captured once, announced, and retires its source automatically
+not-autohandled: open-src (left for the handler; still unacknowledged)
+ok - a source stays armed unless its own adapter classifies the result terminal
+not-autohandled: replace-src (left for the handler; still unacknowledged)
+ok - terminal retirement preserves and releases a concurrently replaced registration
+ok - failed terminal retirement is fail-closed and idempotently recoverable
+ok - one Send & End yields exactly one captured result, automatic retirement, and no recurring poll
+ok - an empty board close is captured and recorded handled without ever waking the captain
+ok - worker board replies and recovered listeners derive their server from the board session
+ok - worker-owned Lavish rounds deliver to the worker, acknowledge on re-arm, and stop at session end
+ok - a capture interrupted before its result commit does not wedge its source
+ok - confirming a launch leaves the source lock free until a claim exists
+ok - an orphaned capture is not acknowledged by a worker it never reached
+ok - a worker-owned board is only armed for an owner its feedback can reach
+ok - an acknowledged note is never resurrected and stops ringing across repeated reconciles
+ok - acknowledging a terminal round concludes that round only
+ok - an interrupted conclude leaves the ended board unpollable and finishes on retry
+ok - a re-arm that cannot acknowledge its round leaves the running generation alone
+ok - a worker-owned board is armed once and re-armed only to acknowledge an open round
+ok - a board close carrying the captain's real answer is still announced
+ok - the shipped poll governor bounds an instantly returning source
+ok - a transient Lavish poll interruption is retried quietly and never announced
+ok - a staged worker reply is handed to the board once across quiet poll retries
+ok - a listener whose staged reply is gone polls the board without one
+ok - a listener that refuses its own setup leaves the staged reply for the next one
+ok - a listener whose artifact vanished leaves the staged reply for the next one
+ok - an interruption that outlives the bounded retries is captured and announced
+ok - only the exact interruption is retried; an unrelated SERVER_ERROR still surfaces
+ok - only the literal two-line interruption enters the quiet retry policy
+ok - arm rejects malformed and out-of-range retry delays before registration
+ok - poll cleanup safely handles an apostrophe-containing TMPDIR
+ok - Lavish classification staging stays bounded while nonmatches stream
+ok - a drained-but-unhandled result survives a replacement session and is retired only by explicit handling, never twice
+ok - pending results preserve numeric order and distinct wake identity
+ok - per-source pending over 3360 results matches the filtered list in 1s, list in 3s
+ok - one owner per canonical source across homes
+ok - retiring a never-completing source stops its runner and its blocked child
+ok - reconcile reaps a runner whose source registration is gone
+not-autohandled: stale-src (left for the handler; still unacknowledged)
+ok - stale-owner recovery removes abandoned output without displacing a live owner
+not-autohandled: cross-home-src (left for the handler; still unacknowledged)
+ok - cross-home stale recovery removes abandoned output from the old state directory
+not-autohandled: race-src (left for the handler; still unacknowledged)
+not-autohandled: race-src (left for the handler; still unacknowledged)
+ok - concurrent stale-claim replacement starts exactly one runner
+ok - an ambiguous leaderless group is preserved without replacement
+ok - a truly dead generation with no surviving group is still safely reclaimed
+ok - reconcile reclaims a dead generation whose state-root identity no longer matches
+ok - retire releases a dead generation's claim instead of refusing forever
+ok - a live generation is never reclaimed, drifted state root or not
+ok - a reused pid never makes its surviving process group reclaimable
+ok - start reclaims a reused-pid claim whose leftovers can still be tidied
+ok - a launch that cannot confirm is announced once per failure episode
+ok - a 64-char source id keeps the launch-failed key within the watcher's marker bound
+ok - reconcile reports a launch it could not confirm instead of counting it as a start
+ok - a launch that finished before confirmation looked is still reported as started
+ok - a zero-padded launch confirm window is honored as base 10
+ok - an unusable launch confirm window is refused by name instead of blamed on the sources
+ok - a dead generation whose leftovers cannot be tidied never keeps owning its source
+ok - claim replacement cannot produce a torn ownership snapshot
+ok - retirement and start share one serialized lifecycle boundary
+ok - detected PID reuse is refused before signalling
+ok - transient identity failure preserves the live source for retry
+ok - bounded home sweep preflights then retires every locally owned source
+ok - home sweep leaves foreign-home claims and runners untouched
+ok - home sweep refuses safely until runner identity is readable
+ok - healthy runtime behavior remains registration-only
+ok - registration rejects unrepresentable newline arguments
+ok - nonzero exit with no output stays armed and silent
+ok - oversized output is bounded rather than published whole or dropped
+ok - live output stays bounded and retirement reaps the whole source group
+ok - stop mismatch evidence preserves the proved-stop boundary
+ok - stop unreadable evidence preserves the proved-stop boundary
+ok - stop unreadable-pgid evidence preserves the proved-stop boundary
+ok - stop nonleader evidence preserves the proved-stop boundary
+ok - invalid output bounds fail closed
+ok - the adapter derives physical identity without newline path corruption
+ok - source-only homes trigger the general supervision guard
+ok - the adapter classifies published poll output safely
+ok - poll derives host and port from the artifact session, not ambient or configured routing
+ok - quiet retries use the board session regardless of configuration changes
+ok - missing or unreadable session routing preserves replies and never guesses another server
+ok - the adapter owns which Lavish results end a source, and payload text cannot forge one
+ok - the adapter owns which Lavish results are silent, and fails closed on everything else
+ok - read distinguishes a live captain message from a session-ending message
+ok - read names the message count with the same label as the message section
+ok - read presents every annotation and a distinct session-ending message
+ok - read never certifies rows missing declared fields as complete
+ok - read keeps every annotation when the session-ending message is absent
+ok - read surfaces a typed comment on an annotated element
+ok - read still surfaces a typed comment that matches the element text
+ok - read still presents a pure annotation with no comment
+ok - read does not present choice context as a comment
+ok - read still presents a pure message with no selector
+ok - read distinguishes a feedback capture from an ended-with-nothing close
+ok - a note typed beside a selection reaches both readers
+ok - a list-form capture is read in full instead of as an empty round
+ok - answers and reconciles flag a choice they cannot carry instead of dropping it silently
+ok - read reports an unparseable capture differently from an empty round
+ok - read presents list-form items with nested targets, attachments, and multi-line prompts
+ok - read never certifies malformed list-form items as complete
+ok - read never reports a declared-but-unparsed block as complete
+ok - answers reads list-form choices and refuses a block it cannot account for
+ok - an adapter with no silence verdict keeps announcing every result
+ok - the published interfaces state the loss limitation and claim no lossless delivery
+registered: floor-src (lavish)
+ok - an orphaned source command obeys the launch floor during its grace window
+ok - a replacement registration starts with one fresh launch floor
+ok - a superseded sleeping runner cannot recreate stale pacing state
+ok - post-commit pacing cleanup cannot veto registration publication
+ok - a pre-reboot monotonic stamp is treated as expired
+ok - an expired owner lease stops a self-relaunching source generation
+ok - a recreated state path does not preserve the old runner
+registered: guard-fail-src (lavish)
+ok - a runner fails closed when its owner guard cannot initialize
+registered: attached-src (lavish)
+ok - a foreground start refreshes its lease while its caller remains attached
+ok - wall-clock corrections do not alter owner lease age
+registered: detached-attached-src (lavish)
+ok - an attached-start keeper stops refreshing after its parent exits
+ok - a detected ambiguous reused-PID group is not signalled
+ok - a detached listener starts reparented, with a live descendant tree under it
+ok - a listener whose owning session is gone stops itself and its whole process group
+ok - reaping the listener stops the process churn under it
+ok - an identical listener in a home whose session is still there is untouched
+ok - retiring a source reaps its reparented listener and every descendant under it
+ok - a stop the guard cannot prove is retried until the expired runner is reaped
+ok - retirement escalates after TERM leaves a surviving child (absent leader)
+ok - retirement escalates after TERM leaves a surviving child (zombie leader)
+ok - an expired runner's guard escalates past a signal-proof child
+guard phase: fresh read 6.449-6.462s, expiry 8s, two full intervals could not finish before 18.449s (deadline 17s)
+guard bound: lease=7s check=6s reaped 13.3s after the last owner activity, documented bound 15s
+ok - an orphaned runner is reaped within the lease plus ONE check interval
+decimal interval: 08 halves to 4s and its listener started
+decimal interval: 010 halves to 5s and its listener started
+ok - a zero-prefixed decimal interval starts its listener and halves as decimal
+ok - one unreadable read does not end a live runner
+ordinary stop: start status=143 retirement=613ms sampled windows=4582/4782ms
+ok - a runner exits on the ordinary stop signal instead of outliving it
+ok - a group whose leader died to something else is still refused, not signalled
+ok - arm reports ready only after the listener is running
+ok - arm waits out a delayed listener start before reporting ready
+ok - arm fails when the listener cannot claim, and leaves the registration retire refused
+ok - arm waits out the confirm window before reporting that the listener is not running
+ok - re-arm over a live earlier listener reports it still serving the board
+ok - older compatible Lavish versions retain the poll-with-reply behavior
+ok - a refused synchronous reply fails arm before source registration
+ok - a refused synchronous reply leaves the same arm retryable
+ok - an arm refused for ownership, round, or endpoint never posts its reply
+ok - direct poll confirms a new-version reply before polling
+ok - an unknown Lavish version fails arm and poll closed, keeping the staged reply
+ok - arm posts and confirms the staged reply before reporting listener readiness
+tests/fm-procevent.test.sh: line 5414:  8295 Killed: 9                  perl -MPOSIX=setsid -e 'setsid() >= 0 or exit 1; exec @ARGV' sleep 60
+ok - re-arm launches the new generation once a draining earlier claim is released
+ok - arm does not launch beside a stale claim whose process group is alive
+
+all procevent tests passed
+FM_TEST_END 2026-11-25T21:11:08Z tests/fm-procevent.test.sh exit=0 duration_ms=472437 gate_skip=false
+FM_TEST_BEGIN 2026-11-25T21:11:08Z tests/fm-initiative.test.sh family=snapshot-bearings expected_gate_skip=optional-binary
+ok - record commands create, edit, close, and reopen initiatives
+ok - gatherer resolves members across main, local, remote, and unreachable homes
+ok - gathering is read-only toward every home
+ok - unreadable records and memberless initiatives are reported
+ok - board opens with Lavish and falls back to plain text without it
+ok - fleet snapshot --backlog-records parses only the named file
+ok - usage errors
+FM_TEST_END 2026-11-25T21:11:26Z tests/fm-initiative.test.sh exit=0 duration_ms=18083 gate_skip=false
+FM_TEST_BEGIN 2026-11-25T21:11:26Z tests/fm-usage-warner.test.sh family=unclassified expected_gate_skip=none
+ok - fm-usage-warner: help and usage plumbing
+ok - fm-usage-warner: an unconfigured home sees no behaviour change
+ok - fm-usage-warner: config parsing keeps only valid directives, including colon-containing ids
+ok - fm-usage-warner: edge-triggered de-dupe crosses once, stays quiet, and re-arms on drop
+ok - fm-usage-warner: tiered thresholds on one window each warn on their own crossing
+ok - fm-usage-warner: a v1 de-dupe record is read without crashing or re-warning
+ok - fm-usage-warner: multiple crossings in one read batch into a single notification
+ok - fm-usage-warner: a repeated directive reports its crossing once
+ok - fm-usage-warner: overlapping checks warn once for one crossing
+ok - fm-usage-warner: a configured but absent window id is silently skipped
+ok - fm-usage-warner: a window missing from one read keeps its crossing recorded
+ok - fm-usage-warner: the read is always strictly read-only
+ok - fm-usage-warner: a schema-6 snapshot resolves the default account lane
+ok - fm-usage-warner: a missing quota-axi is reported once until it changes
+ok - fm-usage-warner: a missing jq is reported by name
+ok - fm-usage-warner: a malformed quota-axi response is reported
+ok - fm-usage-warner: a slow read is bounded and reported as a timeout
+ok - fm-usage-warner: the read bound is cut to fit a lowered FM_CHECK_TIMEOUT
+ok - fm-usage-warner: a watcher bound with no room for a read is recorded as not measured
+ok - fm-usage-warner: an unconfigured invocation never fails on unused environment
+ok - fm-usage-warner: arm refuses without a configured threshold, mirroring the opt-in gate
+ok - fm-usage-warner: arm refuses on a platform with no Notification Center path
+ok - fm-usage-warner: arm writes a bound shim the watcher can run, disarm removes it cleanly
+ok - fm-usage-warner: arm refuses a symlink at the shim path instead of following it
+ok - fm-usage-warner: the armed shim is exactly what the watcher would dispatch
+FM_TEST_END 2026-11-25T21:12:10Z tests/fm-usage-warner.test.sh exit=0 duration_ms=43948 gate_skip=false
+FM_TEST_SUMMARY total=8 failed=0 skipped_gate=0 duration_ms=1434482
+FM_TEST_SUMMARY_FAMILY family=pr-forge count=1 duration_ms=786938 failed=0
+FM_TEST_SUMMARY_FAMILY family=pure-contract-unit count=2 duration_ms=555289 failed=0
+FM_TEST_SUMMARY_FAMILY family=secondmate count=2 duration_ms=58756 failed=0
+FM_TEST_SUMMARY_FAMILY family=snapshot-bearings count=1 duration_ms=18083 failed=0
+FM_TEST_SUMMARY_FAMILY family=standalone count=1 duration_ms=472437 failed=0
+FM_TEST_SUMMARY_FAMILY family=unclassified count=1 duration_ms=43948 failed=0
+FM_TEST_SLOWEST rank=1 script=tests/fm-pr-merge.test.sh duration_ms=786938
+FM_TEST_SLOWEST rank=2 script=tests/fm-captain-hold-lifecycle.test.sh duration_ms=495037
+FM_TEST_SLOWEST rank=3 script=tests/fm-procevent.test.sh duration_ms=472437
+FM_TEST_SLOWEST rank=4 script=tests/fm-timeout-lib.test.sh duration_ms=60252
+FM_TEST_SLOWEST rank=5 script=tests/fm-on.test.sh duration_ms=51251
+FM_TEST_SLOWEST rank=6 script=tests/fm-usage-warner.test.sh duration_ms=43948
+FM_TEST_SLOWEST rank=7 script=tests/fm-initiative.test.sh duration_ms=18083
+FM_TEST_SLOWEST rank=8 script=tests/fm-fleet-usage.test.sh duration_ms=7505
+exit=0
